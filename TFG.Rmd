@@ -1,0 +1,3020 @@
+---
+title: "TFG"
+author: "Sara Medina"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document: default
+  word_document: default
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+# TFG
+
+
+
+## Datos
+
+Seleccionamos los datos que nos interesa para el estudio:
+```{r}
+load("C:/Users/ssara/Desktop/Things/Uni/Clase/TFG/WVS_Cross-National_Wave_7_rData_v5_0.rdata")
+bd <- (`WVS_Cross-National_Wave_7_v5_0`)
+
+#Codificación respuestas
+preguntasde10 <- function(data, columns) {
+  for (col in columns) {
+    data[[col]] <- ifelse(data[[col]] < 10 & data[[col]] > 0,
+                          paste0("0", data[[col]]),
+                          as.character(data[[col]]))
+  }
+  return(data)
+}
+bd <- preguntasde10(bd, c("Q48", "Q49", "Q50", "Q158", "Q159", "Q160", "Q161", "Q162", "Q163"))
+
+#Variables (columnas)
+bd <- bd[, c(4,9,10,88:98, 229:234)]
+names(bd)[1:3] <- c("Año", "País", "ID")
+bd[,3]<-as.numeric(bd[,3])
+for(i in c(1, 2, 4:20)){
+  bd[,i]<-as.factor(bd[,i])
+}
+
+#Países (filas)
+paises_seleccionados <- c("AUL", "BRA", "CAN", "CHN", "EGY", "NTH", "USA")
+bd <- bd[bd$País %in% paises_seleccionados, ]
+bd$País <- droplevels(bd$País)
+print(levels(bd$País))
+n <-nrow(bd)
+
+#Cambiar etiquetas
+colnames(bd) <- c("Año",  "País", "ID", "Felicidad", "Salud", "Libertad", "Satisfacción", "Finanzas", "Comida", "Inseguridad", "Sanidad", "Ingresos", "Refugio", "Bienestar", "Comodidad", "Oportunidades", "Dependencia", "Ideologías", "Actualización", "Progreso")
+```
+
+
+
+### Preprocessing
+
+#### Análisis univariante preprocessing
+
+Función para generar las tablas y los gráficos del análisis:
+```{r echo=FALSE}
+#Función
+descriptiva<-function(X, nom, dades){
+  if (!(is.numeric(X) || class(X)=="Date")){ 
+    frecs<-table(as.factor(X), useNA="no"); proportions<-frecs/n
+    dataf <- data.frame(x = levels(as.factor(X)), y = frecs)
+    par(mfrow=c(1,2))
+    print(ggplot(dataf, aes(x="", y=frecs, fill=x)) + geom_bar(stat = "identity",
+    width=1) + scale_y_continuous(expand = c(0,0)) + coord_polar("y", start=0) +
+    labs(title = paste("Diagrama de sectores de", nom), fill = nom) +
+    theme_minimal() +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank()))
+    print(ggplot(dataf) + geom_bar(aes(x=x, y=frecs),stat="identity", color=
+    "lightblue", fill="lightblue") + scale_y_continuous(expand = c(0,0)) + 
+    labs(title = paste("Histograma de", nom), x = nom, y = "Frecuencia") +
+    theme_minimal())
+    x <- data.frame(X)
+    colnames(x) <- nom
+    st_options(plain.ascii  = FALSE,  headings =TRUE, footnote = NA,
+          style = 'grid', dfSummary.varnumbers = FALSE,
+          dfSummary.valid.col = FALSE, tmp.img.dir  = "img", round.digits = 3,
+          dfSummary.silent=TRUE, dfSummary.graph.col= FALSE)
+    dfSummary(x) 
+  }else{
+       print(ggplot(data = data.frame(X), aes(x = X)) + 
+       geom_histogram(fill = "lightblue") + 
+       labs(title = paste("Histograma de", nom), x = nom, y = "Frecuencia") + 
+       theme_minimal())  
+       a <- descr(X, transpose = TRUE, stats = c("N.Valid", "min", "q1", "med", 
+                 "mean", "sd", "q3", "max"), style = "rmarkdown",format= "center" )
+       rownames(a) <- NULL
+       kable(a, caption = paste("Resumen numérico de la variable", nom), format = "simple")
+   }
+}
+```
+
+```{r, include=FALSE}
+library(ggplot2)
+library(summarytools)
+library(kableExtra)
+```
+
+
+Análisis univariante de cada variable:
+
+
+- Variables correspondientes a información de los encuestados
+
+**Año**: año de la encuesta. 
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,1], colnames(bd)[1], dades = bd)
+```
+Las encuestas se realizaron entre 2017 y 2022, siendo 2018 el año con un mayor número.
+
+**País**: código de país.
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,2], colnames(bd)[2], dades = bd)
+```
+Gráficamente, podemos ver el número de encuestados para cada país. Canadá con 4018 es el mayoritario, mientras que Egipto con 1200 el minoritario.
+
+**País y Año**
+A continuación se muestra una tabla con la distribución de las observaciones por País y Año de encuesta:
+```{r}
+#Dataset filtrado con los países seleccionados
+bd_filtrado <- bd[bd$País %in% paises_seleccionados, ]
+
+#Crear una tabla con los países y sus conteos
+conteo_paises <- table(bd_filtrado$País)
+conteo_paises_df <- as.data.frame(conteo_paises)
+colnames(conteo_paises_df) <- c("País", "Número de Observaciones")
+
+#Añadir el año de la encuesta para cada país
+año_encuesta <- aggregate(Año ~ País, data = bd_filtrado, FUN = unique)
+conteo_paises_df <- merge(conteo_paises_df, año_encuesta, by = "País", all.x = TRUE)
+
+#Calcular la suma total de observaciones
+total_observaciones <- sum(conteo_paises_df$`Número de Observaciones`)
+
+#Añadir fila de total y renombrar
+conteo_paises_df$País <- as.character(conteo_paises_df$País)
+fila_total <- c("TOTAL", total_observaciones, "")
+conteo_paises_df <- rbind(conteo_paises_df, fila_total)
+colnames(conteo_paises_df) <- c("País", "Número de Observaciones", "Año de Encuesta")
+
+#Tabla
+kable(conteo_paises_df, caption = "Tabla de observaciones por País y Año de Encuesta",
+      align = "c",
+      format = "simple")
+```
+
+**ID**: identificador de cada encuestado.
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,3], colnames(bd)[3], dades = bd)
+```
+El ID de cada encuestado es diferente para cada uno, corresponde al número de filas de la base de datos. En total encontramos 16570 valores diferentes que se encuentran entre 36070000 y 840073596.
+
+
+- Variables correspondientes a preguntas de felicidad y bienestar
+
+En las preguntas del cuestionario, aquellas respuestas que hayan sido diferentes a las opciones propuestas, para cada una de ellas, se han codificado de la siguiente manera:
+-1 No sabe 
+-2 No contesta 
+-4 No pregunta 
+-5 Falta; desconocido
+
+**Q46, Felicidad**: sensación de felicidad.
+Tomando todas las cosas en conjunto, diría usted que es (lea y codifique una respuesta): 
+1 Muy feliz
+2 Bastante feliz
+3 No muy feliz
+4 Nada feliz
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,4], colnames(bd)[4], dades = bd)
+```
+La mayoría de encuestados han respondido que son bastante felices considerando todas las cosas en conjunto de su vida.
+
+**Q47, Salud**: estado de salud (subjetivo).
+En definitiva, ¿cómo describiría su estado de salud actualmente? ¿Lo dirías?
+es...
+1 Muy bueno
+2 Bueno
+3 Justo
+4 Pobre
+5 Muy pobre
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,5], colnames(bd)[5], dades = bd)
+```
+Gran parte de la población de estos países consideran tener actualmente un buen estado de salud.
+
+**Q48, Libertad**: ¿cuánta libertad de elección y control?
+Algunas personas sienten que tienen total libertad de elección y control sobre sus vidas, mientras que otras sienten que lo que hacen no tiene ningún efecto real sobre lo que les sucede. 
+Utilice esta escala donde 1 significa "no hay elección alguna" y 10 significa "muchas opciones" para indicar cuánta libertad de elección y control cree que tiene sobre la forma en que tu vida resulta.
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,6], colnames(bd)[6], dades = bd)
+```
+Como podemos observar, los valores elevados representan más del 50% de los encuestados. El número con mayor frecuencia es el 08, siguiéndole el 07 y el 10. Gran parte de los encuestados consideran tienen bastante libertad de elección y control.
+
+**Q49, Satisfacción**: satisfacción con tu vida.
+Considerando todo esto, ¿qué tan satisfecho estás con tu vida en general estos días? Usando esta tarjeta en la cual 1 significa que está "completamente insatisfecho" y 10 significa que está "completamente satisfecho" ¿dónde pondría su satisfacción con tu vida en su conjunto?
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,7], colnames(bd)[7], dades = bd)
+```
+Como en la variable anterior, los valores más elevados representan la mayor parte de los encuestados. Aun así, los resultados mayoritarios son 08, 07 y 09 respectivamente.Gran parte de los encuestados consideran tener bastante satisfacción con su vida en su conjunto.
+
+**Q50, Finanzas**: satisfacción con la situación financiera del hogar.
+¿Qué tan satisfecho está usted con la situación financiera de su hogar? Si '1' significa tú está completamente insatisfecho en esta escala, y '10' significa que está completamente satisfecho, ¿Dónde pondría su satisfacción con la situación financiera de su hogar?
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,8], colnames(bd)[8], dades = bd)
+```
+En este caso, los resultados son más diversos. Encontramos niveles bajos, como 01 y 04, con porcentajes significativos respecto al total. A pesar de ello, los números elevados se encuentran por encima de estos. El 08 y 07 son los más elegidos. Se podría considerar que en general los encuestados están satisfechos con la situación financiera del hogar. Se tendría que estudiar en que países esta satisfacción es baja.
+
+**Q51, Comida**: frecuencia usted/familia (últimos 12 meses) no tuvo suficiente comida para comer.
+En los últimos 12 meses, ¿con qué frecuencia usted o su familia: se quedó sin suficiente comida para comer.
+1 A menudo
+2 A veces
+3 Rara vez
+4 Nunca
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,9], colnames(bd)[9], dades = bd)
+```
+Casi el 82% de los encuestados nunca se han quedado sin suficiente comida para comer, el porcentaje restante corresponde se reparte entre el resto de niveles de manera proporcional al número del nivel.
+
+**Q52, Inseguridad**: frecuencia usted/familia (últimos 12 meses) se sintió inseguro ante el crimen en su propio hogar.
+En los últimos 12 meses, ¿con qué frecuencia usted o su familia: se sintió inseguro frente al crimen en su propia casa.
+1 A menudo
+2 A veces
+3 Rara vez
+4 Nunca
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,10], colnames(bd)[10], dades = bd)
+```
+En este caso, el porcentaje de nunca ha disminuido al 67.4%, dejando un valor más elevado a rara vez y a veces. Por tanto, hay gente que se sintió insegura frente al crimen en su propia casa, aunque la mayoría de ellos no se hayan sentido así.
+
+**Q53, Sanidad**: frecuencia usted/familia (últimos 12 meses) no recibió los medicamentos ni el tratamiento necesarios que necesitaba.
+En los últimos 12 meses, ¿con qué frecuencia usted o su familia: se fue sin el medicamento o tratamiento que necesitaba?
+1 A menudo
+2 A veces
+3 Rara vez
+4 Nunca
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,11], colnames(bd)[11], dades = bd)
+```
+Aproximadamente, el 71.7% de los encuestados han recibido el medicamento o tratamiento que necesitaban. El resto, a veces o rara vez. 
+
+**Q54, Ingresos**: frecuencia usted/familia (últimos 12 meses) se quedó sin ingresos en efectivo.
+En los últimos 12 meses, ¿con qué frecuencia usted o su familia: se quedó sin ingresos en efectivo.
+1 A menudo
+2 A veces
+3 Rara vez
+4 Nunca
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,12], colnames(bd)[12], dades = bd)
+```
+Se repite aproximadamente la situación anterior. La gran parte de los encuestados (68.6%) han respondido nunca, por lo que no se quedó sin ingresos en efectivo en los últimos 12 meses. El otro porcentaje, alguna vez lo ha experimentado.
+
+**Q55, Refugio**: en los últimos 12 meses, ¿con qué frecuencia usted o su familia se han quedado sin un refugio seguro?
+En los últimos 12 meses, ¿con qué frecuencia usted o su familia: te has quedado sin un refugio seguro.
+1 A menudo
+2 A veces
+3 Rara vez
+4 Nunca
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,13], colnames(bd)[13], dades = bd)
+```
+Prácticamente, todos los encuestados (90.6%) nunca se han quedado sin un refugio seguro.
+
+**Q56, Bienestar**: nivel de vida comparado con el de tus padres.
+Comparar su nivel de vida con el nivel de vida de sus padres cuando eran de su edad, ¿diría que está mejor, peor o más o menos igual?
+1 Mejor
+2 Peor
+3 Más o menos lo mismo
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,14], colnames(bd)[14], dades = bd)
+```
+Un poco más de la mitad de los encuestados (57.9%) creen que tienen un mejor nivel de vida comparado con el de sus padres a su edad. Por otro lado, el 24.3% creen que más o menos es el mismo, siguiéndole con un 15.9% de peor. Se tiene que estudiar en que países la respuesta ha sido negativa.
+
+
+- Variables correspondientes a preguntas de ciencia y tecnología
+
+En las preguntas del cuestionario, aquellas respuestas que hayan sido diferentes a las opciones propuestas, para cada una de ellas, se han codificado de la siguiente manera:
+-1 No sabe 
+-2 No contesta 
+-4 No pregunta 
+-5 Falta; desconocido
+
+Estas últimas variables corresponden a afirmaciones, las cuales el encuestado debe responder en qué medida está de acuerdo o en desacuerdo con cada una de ellas. Todas están codificadas de la misma manera: un 01 significa que está “completamente en desacuerdo” y un 10 significa que está “completamente de acuerdo”.
+
+**Q158, Comodidad**: la ciencia y la tecnología están haciendo nuestras vidas más saludables, más fáciles y más cómodas.
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,15], colnames(bd)[15], dades = bd)
+```
+Gran parte de los encuestados están de acuerdo con la afirmación de qué ciencia y la tecnología están haciendo nuestras vidas más saludables, más fáciles y más cómodas. Aun así, encontramos una pequeña parte que está en contra.
+
+**Q159, Oportunidades**: gracias a la ciencia y la tecnología, habrá más oportunidades para la próxima generación.
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,16], colnames(bd)[16], dades = bd)
+```
+La mayoría de los encuestados opinan que gracias a la ciencia y la tecnología, habrá más oportunidades para la próxima generación.
+
+**Q160, Dependencia**: dependemos demasiado de la ciencia y poco de la fe.
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,17], colnames(bd)[17], dades = bd)
+```
+En este caso, los resultados son bastante homogéneos, aun así, destaca 01 con un 24.6%. En general podemos ver gran variedad de opiniones sobre nuestra dependencia de la ciencia y poca de la fe, pero por mayoría se encuentran en desacuerdo.
+
+**Q161, Ideologías**: uno de los efectos negativos de la ciencia es que derriba las ideas de la gente sobre lo que es correcto y equivocado.
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,18], colnames(bd)[18], dades = bd)
+```
+Igual que la variable anterior, los resultados son bastante homogéneos, destacando 01 y 05, con un 20.1% y 17.6% respectivamente. Por tanto, se puede concluir que hay opiniones diversas sobre la afirmación de que uno de los efectos negativos de la ciencia es que derriba las ideas de la gente sobre lo que es correcto y equivocado.
+
+**Q162, Actualización**: no es importante para mi saber sobre ciencia en mi vida diaria.
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,19], colnames(bd)[19], dades = bd)
+```
+Gran parte de los encuestados opinan que es importante para ellos saber sobre ciencia en sus vidas diarias.
+
+**Q163, Progreso**: el mundo está mejor o peor gracias a la ciencia y la tecnología.
+En este caso la escala está codificada de la siguiente manera: un 01 significa que “el mundo está mucho peor” y 10 significa que “el mundo está mucho mejor”.
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,20], colnames(bd)[20], dades = bd)
+```
+Finalmente, en la última variable, la mayoría de los encuestados opinan que el mundo está mejor gracias a la ciencia y la tecnología, a pesar de ello encontramos pequeños porcentajes que opinan lo contrario.
+
+
+#### Análisis bivariante preprocessing
+
+En este análisis se pretende comparar la variable País con cada una del resto de variables individualmente. De este modo, se podrán analizar las situaciones de los países a partir de los porcentajes para cada uno.
+
+Función para generar las tablas y los gráficos del análisis:
+```{r echo=FALSE}
+analisis_bivariante <- function(data, x, y) {
+  #Prueba de independencia chi-cuadrado
+  tabla_contingencia <- table(data[[x]], data[[y]])
+  resultado_chi <- chisq.test(tabla_contingencia)
+  cat("Prueba de Independencia Chi-cuadrado:")
+  print(resultado_chi)
+  #Tabla de contingencia
+  print(kable(tabla_contingencia, format = "markdown", digits = 1, 
+              caption = "Tabla de Contingencia"))
+  #Porcentaje respecto a cada nivel de la variable x
+  tabla_porcentaje <- prop.table(tabla_contingencia, margin = 1) * 100
+  print(kable(tabla_porcentaje, format = "markdown", digits = 1, 
+              caption = "Tabla de Contingencia con Porcentaje"))
+  #Gráfico de barras
+  ggplot(data = data, aes_string(x = x, fill = y)) +
+    geom_bar(position = "fill") +
+    labs(title = paste("Distribución de las variables", x, "y", y), x = x, y = "Count") +
+    scale_y_continuous(labels = scales::percent_format()) +
+    theme_minimal()
+}
+```
+Esta función nos genera una prueba de independencia chi-quadrado donde nos indica que hay una asociación significativa entre las variables en caso de que p-valor < 0.05, una tabla de contingencia donde se visualizan la distribución de los datos, otra tabla de contingencia donde se visualizan la distribución de los datos en porcentaje respecto a cada nivel de la variable x, y un gráfico de barras bivariante.
+
+
+- Variables correspondientes a información de los encuestados
+
+**País - Año**: año de la encuesta por país. 
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Año")
+```
+Podemos ver como la encuestas de Estados Unidos se realizaron en el año 2017, las de Alemania, Brasil, China y Egipto en el 2018, las de Canadá en 2020 y las de los Países Bajos en 2022.
+
+No se ha realizado un análisis bivariante para la variable ID, ya que no tiene ningún interés sobre el estudio en esta sección, simplemente nos codifica cada una de las encuestas para identificarlas.
+
+
+- Variables correspondientes a preguntas de felicidad y bienestar
+
+**País - Felicidad**: sensación de felicidad por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Felicidad")
+```
+La variable País y la pregunta Q46 tienen asociación significativa.
+Podemos ver que independientemente del país, las respuestas dominantes son 2, 1, 3, respectivamente. En todos los países son bastante felices considerando todas las cosas en conjunto de su vida. En Países Bajos es el único país donde se han encontrado respuestas faltantes o desconocidas. Egipto es el país que se siente menos feliz respecto al resto. 
+
+**País - Salud**: estado de salud (subjetivo) por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Salud") 
+```
+La variable País y la pregunta Q47 (Salud) tienen asociación significativa.
+Podemos ver que independientemente del país, la respuesta dominante es 2. En todos los países consideran tener actualmente un buen estado de salud. Países Bajos es el único país donde se han encontrado respuestas faltantes o desconocidas. Las respuestas son muy similares respecto cada país.
+
+**País - Libertad**: ¿cuánta libertad de elección y control hay por país?
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Libertad") 
+```
+La variable País y la pregunta Q48 (Libertad) tienen asociación significativa.
+Como podemos observar, mayoritariamente, todos los países coinciden en tener bastante libertad de elección y control. A pesar de ello, Egipto es el país con más diversidad de opiniones, también destacan encuestados que niegan tener libertad y control de decisión. En Brasil también encontramos disparidad en las encuestas.
+
+**País - Satisfacción**: satisfacción con tu vida por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Satisfacción") 
+```
+La variable País y la pregunta Q49 (Satisfacción) tienen asociación significativa.
+Como en la variable anterior, gran parte de los encuestados, independientemente del país de origen, consideran tener bastante satisfacción con tu vida en su conjunto. Egipto vuelve a destacar por su diversidad de opiniones junto Brasil.
+
+**País - Finanzas**: satisfacción con la situación financiera del hogar del hogar por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Finanzas") 
+```
+La variable País y la pregunta Q50 (Finanzas) tienen asociación significativa.
+En este caso, todos los países excepto Egipto, en general los encuestados están satisfechos con la situación financiera del hogar. Por lo que hace a Egipto, resalta considerablemte valoraciones negativas, siendo la insatisfación financera la opinion dominante. 
+
+**País - Comida**: frecuencia usted/familia (últimos 12 meses) no tuvo suficiente comida para comer por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Comida")
+```
+La variable País y la pregunta Q51 (Comida) tienen asociación significativa.
+Todos los encuestados de los países, mayoritariamente, tuvieron suficiente comida para comer. Países Bajos es el único país donde se han encontrado respuestas faltantes o desconocidas. 
+
+**País - Inseguridad**: frecuencia usted/familia (últimos 12 meses) se sintió inseguro ante el crimen en su propio hogar por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Inseguridad") 
+```
+La variable País y la pregunta Q52 (Inseguridad) tienen asociación significativa.
+Todos los encuestados de los países, mayoritariamente, nunca se sintieron inseguros frente a un crimen en su propia casa. En Brasil destacan algunos casos en los que a veces se sintieron inseguros. Países Bajos es el único país donde se han encontrado respuestas faltantes o desconocidas.  
+
+**País - Sanidad**: frecuencia usted/familia (últimos 12 meses) no recibió los medicamentos ni el tratamiento necesarios que necesitaba por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Sanidad") 
+```
+La variable País y la pregunta Q53 (Sanidad) tienen asociación significativa.
+Todos los encuestados de los países, mayoritariamente, siempre han recibido los medicamentos y el tratamiento necesarios que necesitaban. En Brasil destacan algunos casos en los que a veces no los recibieron. Países Bajos, vuelve a ser el único país donde se han encontrado respuestas faltantes o desconocidas.
+
+**País - Ingresos**: frecuencia usted/familia (últimos 12 meses) se quedó sin ingresos en efectivo por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Ingresos") 
+```
+La variable País y la pregunta Q54 (Ingresos) tienen asociación significativa.
+Todos los encuestados de los países, mayoritariamente, nunca se quedaron sin ingresos en efectivo. Países Bajos es el país que cuenta con mayor número de encuestados que han respondido nunca, casi el 89%. En Brasil destacan algunos casos en los que a veces se quedaron sin. Países Bajos, vuelve a ser el único país donde se han encontrado respuestas faltantes o desconocidas.
+
+**País - Refugio**: por país, en los últimos 12 meses, ¿con qué frecuencia usted o su familia se han quedado sin un refugio seguro?
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Refugio") 
+```
+La variable País y la pregunta Q55 (Refugio) tienen asociación significativa.
+Todos los encuestados de los países, con gran diferencia, entre el 83% y el 95%, nunca se han quedado sin un refugio seguro. Países Bajos, vuelve a ser el único país donde se han encontrado respuestas faltantes o desconocidas.
+
+**País - Bienestar**: nivel de vida comparado con el de tus padres por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Bienestar") 
+```
+La variable País y la pregunta Q56 (Bienestar) tienen asociación significativa.
+En todos los países, excepto Egipto, consideran tener un mejor nivel de vida comparado con el de sus padres a su edad. En el caso de Egipto, la mayor parte de los encuestados creen tener un nivel de vida peor que el de sus padres. Países Bajos, vuelve a ser el único país donde se han encontrado respuestas faltantes o desconocidas.
+
+
+- Variables correspondientes a preguntas de ciencia y tecnología
+
+**País - Comodidad**: la ciencia y la tecnología están haciendo nuestras vidas más saludables, más fáciles y más cómodas, opinión por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Comodidad") 
+```
+En todos los países, excepto Canadá y Países Bajos, están de acuerdo con la afirmación de qué ciencia y la tecnología están haciendo nuestras vidas más saludables, más fáciles y más cómodas. Los dos países restantes no lo creen tanto. En Estados Unidos y Brasil, también encontramos alguna respuesta no tan favorable.
+
+**País - Oportunidades**: gracias a la ciencia y la tecnología, habrá más oportunidades para la próxima generación, opinión por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Oportunidades") 
+```
+La mayoría de los encuestados por cada país opinan que gracias a la ciencia y la tecnología, habrá más oportunidades para la próxima generación. En el caso de Australia, Canadá y Países Bajos, se encuentran un poco en desacuerdo con la afirmación.
+
+**País - Dependencia**: dependemos demasiado de la ciencia y poco de la fe, opinión por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Dependencia")  
+```
+Todos los países, excepto China y Egipto, consideran estar en desacuerdo con la afirmación de que dependemos demasiado de la ciencia y poco de la fe. En cambio, los otros dos países se encuentran en un nivel intermedio respecto el acuerdo o desacuerdo de esta.
+
+**País - Ideologías**: uno de los efectos negativos de la ciencia es que derriba las ideas de la gente sobre lo que es correcto y equivocado, opinión por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Ideologías")
+```
+En esta pregunta encontramos respuestas adversas, mayoritariamente destaca estar en contra de que uno de los efectos negativos de la ciencia es que derriba las ideas de la gente sobre lo que es correcto y equivocado, a pesar de ello también encontramos opiniones intermedias, ni a favor ni en contra. En el caso de Egipto, las respuestas están muy igualadas, aunque destaca la indiferencia; a demás podemos ver qué gran parte de los encuestados han respondido, que no lo saben. Países Bajos, paralelamente, incluye muchas respuestas que no saben qué responder. Brasil es el país que más destaca por estar a favor. 
+
+**País - Actualización**: no es importante para mí saber sobre ciencia en mi vida diaria, opinión por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Actualización") 
+```
+Todos los encuestados de los países están en desacuerdo con la afirmación, por tanto, si consideran importante para ellos saber sobre ciencia en sus vidas diarias.
+
+**País - Progreso**: el mundo está mejor o peor gracias a la ciencia y la tecnología, opinión por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Progreso") 
+```
+Gran parte de las respuestas por país consideran estar a favor de que el mundo está mucho mejor gracias a la ciencia y la tecnología. En el caso de Egipto y Países Bajos, no están tan de acuerdo.
+
+
+
+### Valores missing 
+
+En las preguntas del cuestionario, aquellas respuestas que hayan sido diferentes a las opciones propuestas, codificadas con valores negativos, las convertimos en NA's.
+```{r}
+#Definimos los valores que queremos reemplazar
+valores_a_reemplazar <- c(-1, -2, -4, -5)
+
+#Iteramos sobre cada columna del data frame
+for (col in names(bd)) {
+  # Reemplazar los valores especificados por NA
+  bd[[col]][bd[[col]] %in% valores_a_reemplazar] <- NA
+}
+```
+
+Calculamos el porcentaje de NA's:
+```{r}
+#Número de NA's por variable
+na_por_variable <- colSums(is.na(bd))
+
+#Porcentaje de NA's por variable
+porcentaje_na <- na_por_variable / nrow(bd) * 100
+```
+
+**Tabla**
+Visualizamos los porcentajes de NA's en una tabla:
+```{r}
+#Tabla con el número absoluto y porcentaje de NA's por variable
+tabla_na <- data.frame(NAs = na_por_variable, Porcentaje = porcentaje_na)
+kable(tabla_na, caption = "Tabla de porcentajes NA's por variable")
+```
+
+**Gráfico**
+Visualizamos los porcentajes de NA's en un gráfico:
+```{r, warning=FALSE}
+#Creamos un data frame con los porcentajes de NA's y valores válidos
+#Porcentaje de valores válidos por variable
+validos_por_variable <- colSums(!is.na(bd))
+porcentaje_validos <- validos_por_variable / nrow(bd) * 100
+df <- data.frame(Variables = names(bd),
+  Porcentaje_NA = porcentaje_na,
+  Porcentaje_Valido = porcentaje_validos)
+
+#Convertimos los datos a formato largo (tidy)
+library(tidyr)
+df_long <- pivot_longer(df, cols = c(Porcentaje_NA, Porcentaje_Valido), names_to = "Tipo", values_to = "Porcentaje")
+df_long$Variables <- factor(df_long$Variables, levels = unique(df_long$Variables))
+
+#Gráfico utilizando ggplot2
+ggplot(df_long, aes(x = Porcentaje, y = reorder(Variables, Variables), fill = Tipo)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(title = "Porcentaje de NA's y valores válidos por variable",
+       x = "Porcentaje", y = "Variables") +
+  scale_fill_manual(values = c("lightcoral", "lightgreen"), name = "Tipo de Dato") +
+  theme_minimal()
+```
+Podemos observar que todas las variables correspondientes a las preguntas del cuestionario sobre felicidad, bienestar, ciencia y tecnología contienen NA's. En general son insignificantes, como mucho llevan al 2.9% respecto el total de cada una. Por ese motivo, estos datos los podemos eliminar, ya que no nos aportan información significativa en los resultados.
+
+**Eliminamos los NA's**
+```{r}
+bd <- na.omit(bd)
+```
+
+**Comprobación de NA's**
+Comprobamos que ya no quedan NA's en la base de datos:
+```{r, warning=FALSE}
+#Número de NA's por variable
+na_por_variable <- colSums(is.na(bd))
+
+#Porcentaje de NA's por variable
+porcentaje_na <- na_por_variable / nrow(bd) * 100
+
+#Tabla con el número absoluto y porcentaje de NA's por variable
+tabla_na <- data.frame(NAs = na_por_variable, Porcentaje = porcentaje_na)
+print(kable(tabla_na, caption = "Tabla de porcentajes NA's por variable"))
+
+#Creamos un data frame con los porcentajes de NA's y valores válidos
+#Porcentaje de valores válidos por variable
+validos_por_variable <- colSums(!is.na(bd))
+porcentaje_validos <- validos_por_variable / nrow(bd) * 100
+df <- data.frame(Variables = names(bd),
+  Porcentaje_NA = porcentaje_na,
+  Porcentaje_Valido = porcentaje_validos)
+
+#Convertimos los datos a formato largo (tidy)
+library(tidyr)
+df_long <- pivot_longer(df, cols = c(Porcentaje_NA, Porcentaje_Valido), names_to = "Tipo", values_to = "Porcentaje")
+df_long$Variables <- factor(df_long$Variables, levels = unique(df_long$Variables))
+
+#Gráfico utilizando ggplot2
+print(ggplot(df_long, aes(x = Porcentaje, y = reorder(Variables, Variables), fill = Tipo)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(title = "Porcentaje de NA's y valores válidos por variable",
+       x = "Porcentaje", y = "Variables") +
+  scale_fill_manual(values = c("lightcoral", "lightgreen"), name = "Tipo de Dato") +
+  theme_minimal())
+```
+Ya no hay NA's.
+
+Eliminamos los niveles con NA's para cada variable correspondientes a las respuestas: 
+-1 No sabe 
+-2 No contesta 
+-4 No pregunta 
+-5 Falta; desconocido
+```{r}
+for (col in names(bd)) {
+  if (is.factor(bd[[col]])) {
+    bd[[col]] <- droplevels(bd[[col]])
+  }
+}
+
+# Imprimir los niveles de cada variable
+for (col in names(bd)) {
+  if (is.factor(bd[[col]])) {
+    cat("Niveles de", col, ":", levels(bd[[col]]), "\n")
+  }
+}
+```
+Ya no aparecen estos niveles.
+
+
+
+### Postprocessing
+
+#### Análisis univariante postprocessing
+
+Análisis univariante de cada variable:
+
+
+- Variables correspondientes a información de los encuestados
+
+**Año**: año de la encuesta. 
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,1], colnames(bd)[1], dades = bd)
+```
+Las encuestas se realizaron entre 2017 y 2022, siendo 2018 el año con un mayor número.
+
+**País**: código de país.
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,2], colnames(bd)[2], dades = bd)
+```
+Gráficamente, podemos ver el número de encuestados para cada país. Canadá con 4018 es el mayoritario, mientras que Egipto con 1200 el minoritario.
+
+**ID**: identificador de cada encuestado.
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,3], colnames(bd)[3], dades = bd)
+```
+El ID de cada encuestado es diferente para cada uno, corresponde al número de filas de la base de datos. En total encontramos 14903 valores diferentes que se encuentran entre 36070000 y 840073596.
+
+
+- Variables correspondientes a preguntas de felicidad y bienestar
+
+En las preguntas del cuestionario, aquellas respuestas que hayan sido diferentes a las opciones propuestas, para cada una de ellas, se han codificado de la siguiente manera:
+-1 No sabe 
+-2 No contesta 
+-4 No pregunta 
+-5 Falta; desconocido
+
+**Q46, Felicidad**: sensación de felicidad.
+Tomando todas las cosas en conjunto, diría usted que es (lea y codifique una respuesta): 
+1 Muy feliz
+2 Bastante feliz
+3 No muy feliz
+4 Nada feliz
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,4], colnames(bd)[4], dades = bd)
+```
+La mayoría de encuestados han respondido que son bastante felices considerando todas las cosas en conjunto de su vida.
+
+**Q47, Salud**: estado de salud (subjetivo).
+En definitiva, ¿cómo describiría su estado de salud actualmente? ¿Lo dirías?
+es...
+1 Muy bueno
+2 Bueno
+3 Justo
+4 Pobre
+5 Muy pobre
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,5], colnames(bd)[5], dades = bd)
+```
+Gran parte de la población de estos países consideran tener actualmente un buen estado de salud.
+
+**Q48, Libertad**: ¿cuánta libertad de elección y control?
+Algunas personas sienten que tienen total libertad de elección y control sobre sus vidas, mientras que otras sienten que lo que hacen no tiene ningún efecto real sobre lo que les sucede. 
+Utilice esta escala donde 1 significa "no hay elección alguna" y 10 significa "muchas opciones" para indicar cuánta libertad de elección y control cree que tiene sobre la forma en que tu vida resulta.
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,6], colnames(bd)[6], dades = bd)
+```
+Como podemos observar, los valores elevados representan más del 50% de los encuestados. El número con mayor frecuencia es el 08, siguiéndole el 07 y el 10. Gran parte de los encuestados consideran tienen bastante libertad de elección y control.
+
+**Q49, Satisfacción**: satisfacción con tu vida.
+Considerando todo esto, ¿qué tan satisfecho estás con tu vida en general estos días? Usando esta tarjeta en la cual 1 significa que está "completamente insatisfecho" y 10 significa que está "completamente satisfecho" ¿dónde pondría su satisfacción con tu vida en su conjunto?
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,7], colnames(bd)[7], dades = bd)
+```
+Como en la variable anterior, los valores más elevados representan la mayor parte de los encuestados. Aun así, los resultados mayoritarios son 08, 07 y 09 respectivamente.Gran parte de los encuestados consideran tener bastante satisfacción con tu vida en su conjunto.
+
+**Q50, Finanzas**: satisfacción con la situación financiera del hogar.
+¿Qué tan satisfecho está usted con la situación financiera de su hogar? Si '1' significa tú está completamente insatisfecho en esta escala, y '10' significa que está completamente satisfecho, ¿Dónde pondría su satisfacción con la situación financiera de su hogar?
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,8], colnames(bd)[8], dades = bd)
+```
+En este caso, los resultados son más diversos. Encontramos niveles bajos, como 03 y 04, con porcentajes significativos respecto al total. A pesar de ello, los números elevados se encuentran por encima de estos. El 08 y 07 son los más elegidos. Se podría considerar que en general los encuestados están satisfechos con la situación financiera del hogar. Se tendría que estudiar en que países esta satisfacción es baja.
+
+**Q51, Comida**: frecuencia usted/familia (últimos 12 meses) no tuvo suficiente comida para comer.
+En los últimos 12 meses, ¿con qué frecuencia usted o su familia: se quedó sin suficiente comida para comer.
+1 A menudo
+2 A veces
+3 Rara vez
+4 Nunca
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,9], colnames(bd)[9], dades = bd)
+```
+Casi el 84% de los encuestados nunca se han quedado sin suficiente comida para comer, el porcentaje restante corresponde se reparte entre el resto de niveles de manera proporcional al número del nivel.
+
+**Q52, Inseguridad**: frecuencia usted/familia (últimos 12 meses) se sintió inseguro ante el crimen en su propio hogar.
+En los últimos 12 meses, ¿con qué frecuencia usted o su familia: se sintió inseguro frente al crimen en su propia casa.
+1 A menudo
+2 A veces
+3 Rara vez
+4 Nunca
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,10], colnames(bd)[10], dades = bd)
+```
+En este caso, el porcentaje de nunca ha disminuido al 67.8%, dejando un valor más elevado a rara vez y a veces. Por tanto, hay gente que se sintió insegura frente al crimen en su propia casa, aunque la mayoría de ellos no se hayan sentido así.
+
+**Q53, Sanidad**: frecuencia usted/familia (últimos 12 meses) no recibió los medicamentos ni el tratamiento necesarios que necesitaba.
+En los últimos 12 meses, ¿con qué frecuencia usted o su familia: se fue sin el medicamento o tratamiento que necesitaba?
+1 A menudo
+2 A veces
+3 Rara vez
+4 Nunca
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,11], colnames(bd)[11], dades = bd)
+```
+Aproximadamente, el 72.8% de los encuestados han recibido el medicamento o tratamiento que necesitaban. El resto, a veces o rara vez. 
+
+**Q54, Ingresos**: frecuencia usted/familia (últimos 12 meses) se quedó sin ingresos en efectivo.
+En los últimos 12 meses, ¿con qué frecuencia usted o su familia: se quedó sin ingresos en efectivo.
+1 A menudo
+2 A veces
+3 Rara vez
+4 Nunca
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,12], colnames(bd)[12], dades = bd)
+```
+Se repite aproximadamente la situación anterior. La gran parte de los encuestados (69.7%) han respondido nunca, por lo que no se quedó sin ingresos en efectivo en los últimos 12 meses. El otro porcentaje, alguna vez lo ha experimentado.
+
+**Q55, Refugio**: en los últimos 12 meses, ¿con qué frecuencia usted o su familia se han quedado sin un refugio seguro?
+En los últimos 12 meses, ¿con qué frecuencia usted o su familia: te has quedado sin un refugio seguro.
+1 A menudo
+2 A veces
+3 Rara vez
+4 Nunca
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,13], colnames(bd)[13], dades = bd)
+```
+Prácticamente, todos los encuestados (91.6%) nunca se han quedado sin un refugio seguro.
+
+**Q56, Bienestar**: nivel de vida comparado con el de tus padres.
+Comparar su nivel de vida con el nivel de vida de sus padres cuando eran de su edad, ¿diría que está mejor, peor o más o menos igual?
+1 Mejor
+2 Peor
+3 Más o menos lo mismo
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,14], colnames(bd)[14], dades = bd)
+```
+Un poco más de la mitad de los encuestados (59.7%) creen que tienen un mejor nivel de vida comparado con el de sus padres a su edad. Por otro lado, el 24.4% creen que más o menos es el mismo, siguiéndole con un 15.9% de peor. Se tiene que estudiar en que países la respuesta ha sido negativa.
+
+
+- Variables correspondientes a preguntas de ciencia y tecnología
+
+En las preguntas del cuestionario, aquellas respuestas que hayan sido diferentes a las opciones propuestas, para cada una de ellas, se han codificado de la siguiente manera:
+-1 No sabe 
+-2 No contesta 
+-4 No pregunta 
+-5 Falta; desconocido
+
+Estas últimas variables corresponden a afirmaciones, las cuales el encuestado debe responder en qué medida está de acuerdo o en desacuerdo con cada una de ellas. Todas están codificadas de la misma manera: un 01 significa que está “completamente en desacuerdo” y un 10 significa que está “completamente de acuerdo”.
+
+**Q158, Comodidad**: la ciencia y la tecnología están haciendo nuestras vidas más saludables, más fáciles y más cómodas.
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,15], colnames(bd)[15], dades = bd)
+```
+Gran parte de los encuestados están de acuerdo con la afirmación de qué ciencia y la tecnología están haciendo nuestras vidas más saludables, más fáciles y más cómodas. Aun así, encontramos una pequeña parte que está en contra.
+
+**Q159, Oportunidades**: gracias a la ciencia y la tecnología, habrá más oportunidades para la próxima generación.
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,16], colnames(bd)[16], dades = bd)
+```
+La mayoría de los encuestados opinan que gracias a la ciencia y la tecnología, habrá más oportunidades para la próxima generación.
+
+**Q160, Dependencia**: dependemos demasiado de la ciencia y poco de la fe.
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,17], colnames(bd)[17], dades = bd)
+```
+En este caso, los resultados son bastante homogéneos, aun así, destaca 01 con un 24.8%. En general podemos ver gran variedad de opiniones sobre nuestra dependencia de la ciencia y poca de la fe, pero por mayoría se encuentran en desacuerdo.
+
+**Q161, Ideologías**: uno de los efectos negativos de la ciencia es que derriba las ideas de la gente sobre lo que es correcto y equivocado.
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,18], colnames(bd)[18], dades = bd)
+```
+Igual que la variable anterior, los resultados son bastante homogéneos, destacando 01 y 05, con un 21.2% y 18.6% respectivamente. Por tanto, se puede concluir que hay opiniones diversas sobre la afirmación de que uno de los efectos negativos de la ciencia es que derriba las ideas de la gente sobre lo que es correcto y equivocado.
+
+**Q162, Actualización**: no es importante para mi saber sobre ciencia en mi vida diaria.
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,19], colnames(bd)[19], dades = bd)
+```
+Gran parte de los encuestados opinan que es importante para ellos saber sobre ciencia en sus vidas diarias.
+
+**Q163, Progreso**: el mundo está mejor o peor gracias a la ciencia y la tecnología.
+En este caso la escala está codificada de la siguiente manera: un 01 significa que “el mundo está mucho peor” y 10 significa que “el mundo está mucho mejor”.
+```{r}
+par(mfrow=c(1,2))
+descriptiva(bd[,20], colnames(bd)[20], dades = bd)
+```
+Finalmente, en la última variable, la mayoría de los encuestados opinan que el mundo está mejor gracias a la ciencia y la tecnología, a pesar de ello encontramos pequeños porcentajes que opinan lo contrario.
+
+
+#### Análisis bivariante postprocessing
+
+En este análisis se pretende comparar la variable País con cada una del resto de variables individualmente. De este modo, se podrán analizar las situaciones de los países a partir de los porcentajes para cada uno.
+
+Función para generar las tablas y los gráficos del análisis:
+```{r echo=FALSE}
+analisis_bivariante <- function(data, x, y) {
+  #Prueba de independencia chi-cuadrado
+  tabla_contingencia <- table(data[[x]], data[[y]])
+  resultado_chi <- chisq.test(tabla_contingencia)
+  cat("Prueba de Independencia Chi-cuadrado:")
+  print(resultado_chi)
+  #Tabla de contingencia
+  print(kable(tabla_contingencia, format = "markdown", digits = 1, 
+              caption = "Tabla de Contingencia"))
+  #Porcentaje respecto a cada nivel de la variable x
+  tabla_porcentaje <- prop.table(tabla_contingencia, margin = 1) * 100
+  print(kable(tabla_porcentaje, format = "markdown", digits = 1, 
+              caption = "Tabla de Contingencia con Porcentaje"))
+  #Gráfico de barras
+  ggplot(data = data, aes_string(x = x, fill = y)) +
+    geom_bar(position = "fill") +
+    labs(title = paste("Distribución de las variables", x, "y", y), x = x, y = "Count") +
+    scale_y_continuous(labels = scales::percent_format()) +
+    theme_minimal()
+}
+```
+Esta función nos genera una prueba de independencia chi-quadrado donde nos indica que hay una asociación significativa entre las variables en caso de que p-valor < 0.05, una tabla de contingencia donde se visualizan la distribución de los datos, otra tabla de contingencia donde se visualizan la distribución de los datos en porcentaje respecto a cada nivel de la variable x, y un gráfico de barras bivariante.
+
+
+- Variables correspondientes a información de los encuestados
+
+**País - Año**: año de la encuesta por país. 
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Año")
+```
+Podemos ver como las encuestas de Estados Unidos se realizaron en el año 2017, las de Alemania, Brasil, China y Egipto en el 2018, las de Canadá en 2020 y las de los Países Bajos en 2022.
+
+No se ha realizado un análisis bivariante para la variable ID, ya que no tiene ningún interés sobre el estudio en esta sección, simplemente nos codifica cada una de las encuestas para identificarlas.
+
+
+- Variables correspondientes a preguntas de felicidad y bienestar
+
+**País - Felicidad**: sensación de felicidad por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Felicidad") 
+```
+La variable País y la pregunta Q46 tienen asociación significativa.
+Podemos ver que independientemente del país, las respuestas dominantes son 2, 1, 3, respectivamente. En todos los países son bastante felices considerando todas las cosas en conjunto de su vida. Egipto es el país que se siente menos feliz respecto al resto. 
+
+**País - Salud**: estado de salud (subjetivo) por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Salud") 
+```
+La variable País y la pregunta Q47 (Salud) tienen asociación significativa.
+Podemos ver que independientemente del país, la respuesta dominante es 2. En todos los países consideran tener actualmente un buen estado de salud. Las respuestas son muy similares respecto cada país.
+
+**País - Libertad**: ¿cuánta libertad de elección y control hay por país?
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Libertad") 
+```
+La variable País y la pregunta Q48 (Libertad) tienen asociación significativa.
+Como podemos observar, mayoritariamente, todos los países coinciden en tener bastante libertad de elección y control. A pesar de ello, Egipto es el país con más diversidad de opiniones, también destacan encuestados que niegan tener libertad y control de decisión. En Brasil encontramos el mayor porcentaje de respuestas en 10.
+
+**País - Satisfacción**: satisfacción con tu vida por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Satisfacción") 
+```
+La variable País y la pregunta Q49 (Satisfacción) tienen asociación significativa.
+Como en la variable anterior, gran parte de los encuestados, independientemente del país de origen, consideran tener bastante satisfacción con tu vida en su conjunto. Egipto vuelve a destacar por su diversidad de opiniones. En Brasil encontramos el mayor porcentaje de respuestas en 10.
+
+**País - Finanzas**: satisfacción con la situación financiera del hogar del hogar por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Finanzas") 
+```
+La variable País y la pregunta Q50 (Finanzas) tienen asociación significativa.
+En este caso, todos los países excepto Egipto, en general los encuestados están satisfechos con la situación financiera del hogar. Por lo que hace a Egipto, resalta considerablemte valoraciones negativas, siendo la insatisfación financera la opinion dominante. 
+
+**País - Comida**: frecuencia usted/familia (últimos 12 meses) no tuvo suficiente comida para comer por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Comida") 
+```
+La variable País y la pregunta Q51 (Comida) tienen asociación significativa.
+Todos los encuestados de los países, mayoritariamente, tuvieron suficiente comida para comer. 
+
+**País - Inseguridad**: frecuencia usted/familia (últimos 12 meses) se sintió inseguro ante el crimen en su propio hogar por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Inseguridad") 
+```
+La variable País y la pregunta Q52 (Inseguridad) tienen asociación significativa.
+Todos los encuestados de los países, mayoritariamente, nunca se sintieron inseguros frente a un crimen en su propia casa. En Brasil destacan algunos casos en los que a veces se sintieron inseguros. 
+
+**País - Sanidad**: frecuencia usted/familia (últimos 12 meses) no recibió los medicamentos ni el tratamiento necesarios que necesitaba por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Sanidad") 
+```
+La variable País y la pregunta Q53 (Sanidad) tienen asociación significativa.
+Todos los encuestados de los países, mayoritariamente, siempre han recibido los medicamentos y el tratamiento necesarios que necesitaban. En Brasil destacan algunos casos en los que a veces no los recibieron. 
+
+**País - Ingresos**: frecuencia usted/familia (últimos 12 meses) se quedó sin ingresos en efectivo por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Ingresos") 
+```
+La variable País y la pregunta Q54 (Ingresos) tienen asociación significativa.
+Todos los encuestados de los países, mayoritariamente, nunca se quedaron sin ingresos en efectivo. Países Bajos es el país que cuenta con mayor número de encuestados que han respondido nunca, casi el 95%. En Brasil destacan algunos casos en los que a veces se quedaron sin.
+
+**País - Refugio**: por país, en los últimos 12 meses, ¿con qué frecuencia usted o su familia se han quedado sin un refugio seguro?
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Refugio") 
+```
+La variable País y la pregunta Q55 (Refugio) tienen asociación significativa.
+Todos los encuestados de los países, con gran diferencia, entre el 84.5% y el 98.5%, nunca se han quedado sin un refugio seguro.
+
+**País - Bienestar**: nivel de vida comparado con el de tus padres por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Bienestar") 
+```
+La variable País y la pregunta Q56 (Bienestar) tienen asociación significativa.
+En todos los países, excepto Egipto, consideran tener un mejor nivel de vida comparado con el de sus padres a su edad. En el caso de Egipto, la mayor parte de los encuestados creen tener un nivel de vida peor que el de sus padres. China, en cambio, cree tener un nivel de vida mucho mejor.
+
+
+- Variables correspondientes a preguntas de ciencia y tecnología
+
+**País - Comodidad**: la ciencia y la tecnología están haciendo nuestras vidas más saludables, más fáciles y más cómodas, opinión por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Comodidad") 
+```
+En todos los países, excepto Canadá y Países Bajos, están de acuerdo con la afirmación de qué ciencia y la tecnología están haciendo nuestras vidas más saludables, más fáciles y más cómodas. Los dos países restantes no lo creen tanto.
+
+**País - Oportunidades**: gracias a la ciencia y la tecnología, habrá más oportunidades para la próxima generación, opinión por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Oportunidades")  
+```
+La mayoría de los encuestados por cada país opinan que gracias a la ciencia y la tecnología, habrá más oportunidades para la próxima generación. En el caso de Australia, Canadá y Países Bajos, se encuentran un poco en desacuerdo con la afirmación.
+
+**País - Dependencia**: dependemos demasiado de la ciencia y poco de la fe, opinión por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Dependencia") 
+```
+Todos los países, excepto China y Egipto, consideran estar en desacuerdo con la afirmación de que dependemos demasiado de la ciencia y poco de la fe. En cambio, los otros dos países se encuentran en un nivel intermedio respecto el acuerdo o desacuerdo de esta.
+
+**País - Ideologías**: uno de los efectos negativos de la ciencia es que derriba las ideas de la gente sobre lo que es correcto y equivocado, opinión por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Ideologías") 
+```
+En esta pregunta encontramos respuestas adversas, mayoritariamente destaca estar en contra de que uno de los efectos negativos de la ciencia es que derriba las ideas de la gente sobre lo que es correcto y equivocado, a pesar de ello también encontramos opiniones intermedias, ni a favor ni en contra. En el caso de Egipto, las respuestas están muy igualadas, aunque destaca la indiferencia. Brasil es el país que más destaca por estar a favor. 
+
+**País - Actualización**: no es importante para mí saber sobre ciencia en mi vida diaria, opinión por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Actualización") 
+```
+Todos los encuestados de los países están en desacuerdo con la afirmación, por tanto, si consideran importante para ellos saber sobre ciencia en sus vidas diarias.
+
+**País - Progreso**: el mundo está mejor o peor gracias a la ciencia y la tecnología, opinión por país.
+```{r, warning=FALSE}
+analisis_bivariante(bd, "País", "Progreso") 
+```
+Gran parte de las respuestas por país consideran estar a favor de que el mundo está mucho mejor gracias a la ciencia y la tecnología. En el caso de Egipto y Países Bajos, no están tan de acuerdo.
+
+
+
+### Clustering Jerárquico
+
+En el caso del clustering jerárquico, se ha decidido fijar el método de Ward como regla de asociación y se ha usado la distancia de Gower al cuadrado como métrica. 
+```{r}
+library(cluster)
+
+#Disimilitud de Gower^2:
+dissimMatrix <- daisy(bd[, -(which(names(bd) == "ID" | names(bd) == "Año"))], metric = "gower", stand=FALSE)
+
+#Matriz de distancias o similitud:
+distMatrix<-dissimMatrix^2
+
+h1 <- hclust(distMatrix,method="ward.D2") 
+```
+
+Criterio de enlace para generar el árbol jerárquico usando el método de Ward:
+```{r}
+plot(h1)
+```
+
+Una vez obtenido el dendrograma se ha usado el estadístico de silhouette para decidir cuál era el número óptimo de clusters:
+```{r}
+avg_sil <- c()
+for (k in 2:10) {
+  clust <- cutree(h1, k)
+  sil <- silhouette(clust, dissimMatrix)
+  avg_sil[k-1] <- mean(sil[,3])
+}
+plot(avg_sil, type="b", xlab="Number of clusters", ylab="Average silhouette width")
+```
+Podemos observar que el criterio de silhouette ha arrojado su valor máximo para k=1.
+Esto está indicando que todos los datos se agrupan en un solo cluster. Por tanto, no existen subdivisiones ni agrupaciones adicionales en los datos; es decir, todos los puntos de datos se considerarán parte de un solo grupo, y no hay separación ni diferenciación entre ellos.
+De este modo, se ha elegido recurrir al método de corte visual, donde el número de clusters se ha determinado a partir de un "corte natural" del dendrograma, justo donde las fusiones de clusters o ramas comienzan a ser más largas, dando como resultado k=3.
+
+A continuación se realiza el árbol jerárquico con 3 clusters:
+```{r echo=FALSE}
+library(dendextend)
+avg_dend_obj <- as.dendrogram(h1)
+avg_col_dend <- color_branches(avg_dend_obj, k = 3, col = c("pink2", "#8CCE7D", "#92CCCE"))
+plot(avg_col_dend)
+```
+
+
+
+### Profiling de los clusters
+
+Ahora nos adentraremos en el proceso de profiling, que es esencial para entender en profundidad los grupos identificados en nuestro estudio de clustering. El profiling implica analizar cuidadosamente las características de cada grupo para descubrir patrones distintivos y significativos en nuestros datos. Este proceso nos permite validar la calidad de los clusters y generar hipótesis sobre las posibles causas de las diferencias observadas entre los grupos. 
+```{r}
+#Clustering con k=4
+clusters <- cutree(h1, k = 3)
+#Dataframe con los datos originales y la asignación de clusters
+clustered_data <- cbind(bd[, -(which(names(bd) == "ID" | names(bd) == "Año"))], Cluster = clusters)
+```
+
+```{r}
+P<-clustered_data[,"Cluster"]
+n<-dim(clustered_data)[1]
+```
+
+Función para realizar el Profiling:
+```{r}
+prof <- function(X, nom, dades){ 
+   X <- as.factor(X)
+   marg <- table(X)/n
+      table<-table(X,P)
+      paleta <- colorRampPalette(c("#00E5EE", "lightblue", "palegreen", "green3", "#FFFF00", "#FFF68F", "mistyrose", "#FF6A6A", "#EE0000", "#CD3278"))(length(levels(X)))
+      barplot(table(X, as.factor(P)), beside=TRUE,col=paleta, main = paste(nom, "por clusters"))
+      legend("topright",levels(as.factor(X)),pch=1,cex=0.5, col=paleta)
+}
+```
+
+
+Análisis de cada variable con el objetivo de asignar las características a los grupos:
+
+**País**
+```{r}
+prof(clustered_data$País, "País", clustered_data)
+```
+
+**Felicidad**
+```{r}
+prof(clustered_data$Felicidad, "Felicidad", clustered_data)
+```
+
+**Salud**
+```{r}
+prof(clustered_data$Salud, "Salud", clustered_data) 
+```
+
+**Libertad**
+```{r}
+prof(clustered_data$Libertad, "Libertad", clustered_data)
+```
+
+**Satisfacción**
+```{r}
+prof(clustered_data$Satisfacción, "Satisfacción", clustered_data)
+```
+
+**Finanzas**
+```{r}
+prof(clustered_data$Finanzas, "Finanzas", clustered_data)
+```
+
+**Comida**
+```{r}
+prof(clustered_data$Comida, "Comida", clustered_data)
+```
+
+**Inseguridad**
+```{r}
+prof(clustered_data$Inseguridad, "Inseguridad", clustered_data)
+```
+
+**Sanidad**
+```{r}
+prof(clustered_data$Sanidad, "Sanidad", clustered_data)
+```
+
+**Ingresos**
+```{r}
+prof(clustered_data$Ingresos, "Ingresos", clustered_data)
+```
+
+**Refugio**
+```{r}
+prof(clustered_data$Refugio, "Refugio", clustered_data)
+```
+
+**Bienestar**
+```{r}
+prof(clustered_data$Bienestar, "Bienestar", clustered_data)
+```
+
+**Comodidad**
+```{r}
+prof(clustered_data$Comodidad, "Comodidad", clustered_data)
+```
+
+**Oportunidades**
+```{r}
+prof(clustered_data$Oportunidades, "Oportunidades", clustered_data)
+```
+
+**Dependencia**
+```{r}
+prof(clustered_data$Dependencia, "Dependencia", clustered_data)
+```
+
+**Ideologías**
+```{r}
+prof(clustered_data$Ideologías, "Ideologías", clustered_data)
+```
+
+**Actualización**
+```{r}
+prof(clustered_data$Actualización, "Actualización", clustered_data)
+```
+
+**Progreso**
+```{r}
+prof(clustered_data$Progreso, "Progreso", clustered_data)
+```
+Cada gráfico nos muestra los niveles de cada variable repartidos según la clase que le corresponde. Para asignar las características de los clústeres, se debe de tener en cuenta la categoría dominante en cada grupo.
+Después de realizar el análisis, las características que se pueden definir para cada grupo son las siguientes:
+
+- Cluster 1: Grupo formado por personas procedentes mayoritariamente de China. Tanto su situación de bienestar y felicidad, como su apoyo hacia la ciencia y la tecnología, son muy positivas. Tienen mucha libertad, se sienten seguros en sus hogares, no tienen problemas para obtener comida, comprar medicamentos o con sus ingresos; la ciencia y la tecnología les ha abierto muchas oportunidades en el futuro.
+
+- Cluster 2: Grupo formado por personas procedentes mayoritariamente de Canadá. Consideran tener bastante buena situación de bienestar y felicidad. No tienen problemas para obtener medicamentos ni para vivir en un refugio seguro. El apoyo de este grupo de personas hacia la ciencia y tecnología también es bastante positiva, creen que puede aportar oportunidades futuras, aunque también produzca un cierto efecto de dependencia.
+
+- Cluster 3: Grupo formado por personas procedentes mayoritariamente de Canadá y Estados Unidos. En este caso, no consideran tener muy buena situación ni de bienestar ni de felicidad. Rara vez tienen problemas con la situación financiera de sus hogares, para comprar comida y para obtener medicamentos. Además, existen controversias, con mayor peso negativo, hacia el apoyo de la ciencia y tecnología. No están muy a favor de que sea una buena opción para mejorar el mundo.
+
+
+Teniendo en cuenta las peculiaridades de cada uno, se pueden asignar etiquetas a cada clase:
+
+- Cluster 1: Optimismo sobre el Bienestar y la Tecnología de China.
+
+- Cluster 2: Bienestar Canadiense y su confianza hacia la Ciencia y la Tecnología.
+
+- Cluster 3: Evaluación crítica Canadiense y Estadounidense sobre el vínculo entre la Ciencia y el Bienestar.
+
+
+
+### Correlaciones 
+
+Ahora se hará un estudio sobre correlaciones de variables del mismo bloque de preguntas, con el objetivo de poder eliminar aquellas variables con alta correlación para facilitar el posterior análisis de regresión.
+Se calculará a partir del coeficiente de correlación de Pearson, el cual puede variar entre -1 y 1, donde:
+* 1 indica una correlación positiva perfecta, lo que significa que a medida que una variable aumenta, la otra variable también aumenta en una relación lineal perfecta.
+* -1 indica una correlación negativa perfecta, lo que significa que a medida que una variable aumenta, la otra variable disminuye en una relación lineal perfecta.
+* 0 indica que no hay correlación lineal entre las variables.
+
+
+- Todas las variables 
+
+```{r, echo=FALSE}
+#Seleccionar las variables de interés
+variables1 <- bd[, c("Felicidad", "Salud", "Libertad", "Satisfacción", "Finanzas", "Comida", "Inseguridad", "Sanidad", "Ingresos", "Refugio", "Bienestar", "Comodidad", "Oportunidades", "Dependencia", "Ideologías", "Actualización", "Progreso")]
+
+#Convertir factores a numéricos
+variables_numericas1 <- as.data.frame(lapply(variables1, as.numeric))
+
+#Correlaciones
+correlaciones1 <- cor(variables_numericas1)
+
+#Mostrar la tabla de correlaciones
+print(kable(correlaciones1))
+
+#Graficar matriz de correlaciones
+library(corrplot)
+corrplot(correlaciones1, method = "circle")
+```
+Como podemos observar, las variables correspondientes a preguntas de felicidad y bienestar no están relacionadas con preguntas de ciencia y tecnología, ya que sus correlaciones se encuentran muy cerca del 0, son variables  incorrelacionadas.
+Por otro lado, se puede ver que la correlación de una variable consigo misma es 1. Esto se debe a que la correlación mide la relación lineal entre dos variables y cuando se relaciona una variable consigo misma, se compara exactamente la misma información, por lo tanto, hay una relación lineal perfecta entre ellas.
+
+
+- Variables correspondientes a preguntas de felicidad y bienestar
+
+```{r echo=FALSE}
+#Seleccionar las variables de interés
+variables2 <- bd[, c("Felicidad", "Salud", "Libertad", "Satisfacción", "Finanzas", "Comida", "Inseguridad", "Sanidad", "Ingresos", "Refugio", "Bienestar")]
+
+#Convertir factores a numéricos
+variables_numericas2 <- as.data.frame(lapply(variables2, as.numeric))
+
+#Correlaciones
+correlaciones2 <- cor(variables_numericas2)
+
+#Mostrar la tabla de correlaciones
+print(kable(correlaciones2))
+
+#Graficar matriz de correlaciones
+corrplot(correlaciones2, method = "circle")
+```
+Por lo que hace a las preguntas de felicidad y bienestar, las correlaciones más significativas que encontramos son:
+Correlaciones positivas de Felicidad con Salud (0.3961649), Satisfacción con Libertad (0.5139960), Satisfacción con Finanzas (0.5846080), Comida con Sanidad (0.5178804), Comida con Ingresos (0.5105410), Comida con Refugio (0.4696363) y Sanidad con Ingresos (0.4990721).
+Correlaciones negativas de Satisfacción con Felicidad (-0.5616240).
+
+
+- Variables correspondientes a preguntas de ciencia y tecnología
+
+```{r}
+#Seleccionar las variables de interés
+variables3 <- bd[, c("Comodidad", "Oportunidades", "Dependencia", "Ideologías", "Actualización", "Progreso")]
+
+#Convertir factores a numéricos
+variables_numericas3 <- as.data.frame(lapply(variables3, as.numeric))
+
+#Correlaciones
+correlaciones3 <- cor(variables_numericas3)
+
+#Mostrar la tabla de correlaciones
+print(kable(correlaciones3))
+
+#Graficar matriz de correlaciones
+corrplot(correlaciones3, method = "circle")
+```
+Por lo que hace a las preguntas correspondientes a ciencia y tecnología, las correlaciones más significativas que encontramos son:
+Correlaciones positivas de Comodidad con Oportunidad (0.6511324), Comodidad con Progreso (0.5080296), Oportunidad con Progreso (0.4390979) y Dependencia con Ideologías (0.4366363).
+Correlaciones negativas no encontramos ninguna destacable.
+
+
+Más adelante, se estudiará con mayor detalle que variables son necesarias para explicar un modelo basado en estos datos.
+
+
+
+### ACP
+
+El Análisis de Componentes Principales (ACP) es una técnica estadística utilizada para reducir la dimensionalidad de un conjunto de datos al transformarlo en un grupo de nuevas variables no correlacionadas llamadas componentes principales. Estos componentes capturan las direcciones de máxima variación en los datos, lo que permite una interpretación más sencilla y una visualización más efectiva de la estructura subyacente de los datos.
+
+Ahora se realizará un ACP para cada tipología de bloque de preguntas; uno para Felicidad y Bienestar y otro para Ciencia y Tecnología; convirtiendo los datos a numéricos, ya que este solo trabaja con esta tipología de variables.
+```{r}
+#Convertir factores en variables numéricas
+datos_num <- (bd[, -(which(names(bd) == "ID" | names(bd) == "Año" | names(bd) == "País"))])
+
+for (i in 1:length(datos_num)){
+  datos_num[[i]] <- as.numeric(datos_num[[i]])
+}
+```
+
+
+#### ACP Felicidad y Bienestar
+```{r}
+datos_num_FB <- datos_num[, c("Felicidad", "Salud", "Libertad", "Satisfacción", "Finanzas", "Comida", "Inseguridad", "Sanidad", "Ingresos", "Refugio", "Bienestar")]
+```
+
+**Porcentaje acumulada de varianza**
+```{r, echo=FALSE}
+library(FactoMineR)
+
+#ACP en los datos transformados
+acp_FB <- PCA(datos_num_FB, graph = FALSE) 
+
+#Resultados
+print(kable(acp_FB$eig))
+```
+
+Los valores propios en un Análisis de Componentes Principales (ACP) representan la cantidad de varianza explicada por cada componente principal, mientras que los valores propios acumulados indican la cantidad total de varianza explicada por los componentes principales a medida que se suman. Estos valores son fundamentales para comprender cuánta información retiene cada componente y cuánta varianza global se explica en el conjunto de datos. Se utilizan para determinar cuántos componentes principales son necesarios para capturar una proporción significativa de la varianza total en los datos.
+
+**Inercia explicada por dimensión**
+```{r}
+#Gráfica
+par(mar = c(5, 4, 4, 8))  
+indice_80 <- which.max(acp_FB$eig[,3] >= 80)
+# Graficar la inercia explicada por dimensión
+barplot(acp_FB$eig[,2], main = "Inercia explicada por dimensión ACP",
+        xlab = "Dimensión", ylab = "Inercia", col = "lightblue")
+par(new = TRUE)
+plot(1:length(acp_FB$eig[,3]), acp_FB$eig[,3], type = "b", main = "",
+     xlab = "", ylab = "", axes = FALSE, col = "coral")
+axis(side = 4, at = pretty(range(acp_FB$eig[,3])), col = "black", col.axis = "black")
+mtext("Inercia acumulada", side = 4, line = 3, col = "black")
+abline(v = indice_80, col = "green3")
+text(indice_80, acp_FB$eig[indice_80, 3], "80%", pos = 2, col = "green3")
+
+print(paste("La dimensión que contiene el 80% acumulado es:", indice_80))
+```
+La inercia explicada por el 80% indica el número de componentes necesarios para explicar al menos el 80% de la variabilidad total en los datos. Este criterio se utiliza para determinar la cantidad de componentes principales que se deben conservar en el análisis. Se seleccionan los primeros componentes hasta que la suma acumulada de sus valores propios alcance o supere el 80% de la varianza total. Esto permite retener la mayor parte de la información relevante del conjunto de datos mientras se reduce su dimensionalidad. Es una forma efectiva de balancear la precisión del modelo con la simplicidad y la interpretabilidad de los resultados.
+En nuestro caso, se necesitan 7 dimensiones.
+
+**Mapa de Factores del ACP**
+```{r, echo=FALSE}
+#Graficar el ACP
+library(factoextra)
+fviz_pca_var(acp_FB,axes = c(1,2),col.var = "contrib",
+ gradient.cols = c("#AFEEEE", "plum1", "pink2"),
+ repel = TRUE) + theme_minimal()
+```
+El mapa de factores del ACP, centrado únicamente en las variables, es una representación gráfica que muestra la relación entre las variables originales y los componentes principales obtenidos en el análisis. Se puede observar que la primera dimensión explica el 33.1% de la inercia; mientras que la segunda, el 16.5%.
+En este mapa, las variables se representan como vectores en un espacio bidimensional, donde la longitud de cada variable refleja su contribución al componente principal correspondiente y el ángulo, la correlación entre variables.
+
+**Interpretación de los planos factoriales**
+En el caso de la longitud de un vector, cuanto más largo sea, mayor será la contribución de la variable a la variabilidad observada en ese componente. En otras palabras, las variables con vectores más largos tienen una mayor influencia en la dirección y la magnitud de ese componente principal. Para diferenciar mejor la importancia de las variables, se ha coloreado cada vector a partir de su contribución sobre las dimensiones; cuanto mayor sea esta, la variable estará representada con un color más rosado; en caso contrario, será más azulado.
+
+En nuestro caso existen muchas variables significativas (de color rosa), para la dimensión 1 encontramos las variables Satisfacción, Finanzas, Comida, Sanidad e Ingresos; y para la dimensión 2, Felicidad, Satisfacción, Comida y Refugio. La variable que no es tan importante (de color azul) para explicar las dimensiones es Bienestar.
+
+En esta tabla podemos ver la contribución de cada variable para cada dimensión y verificar las variables significativas de estos planos.
+```{r}
+print(kable(acp_FB$var$contrib[,1:2]))
+```
+
+Por otro lado, el ángulo entre dos vectores refleja la correlación entre las variables correspondientes en el espacio de los componentes principales. Si dos vectores forman un ángulo pequeño (cercano a 0 grados), significa que las variables están altamente correlacionadas y tienden a variar juntas. Si los vectores forman un ángulo de 90 grados, indican que las variables no están correlacionadas y varían de manera independiente en el espacio de los componentes principales. Y finalmente, si el ángulo es de 180 grados, indica que las variables correspondientes están negativamente correlacionadas. 
+
+Tal como se ha visto en el análisis de correlaciones, las variables correlacionadas positivas son: Felicidad con Salud (0.3961649), Satisfacción con Libertad (0.5139960), Satisfacción con Finanzas (0.5846080), Comida con Sanidad (0.5178804), Comida con Ingresos (0.5105410), Comida con Refugio (0.4696363) y Sanidad con Ingresos (0.4990721); cada par de variables se encuentran muy cerca entre ellas. Por lo que hace a la correlación negativa, la pareja Satisfacción con Felicidad (-0.5616240), forman un ángulo de 180 grados, verificando su negatividad de correlación.
+
+En esta tabla podemos ver las correlaciones.
+```{r}
+print(kable(acp_FB$var$cor[,1:2]))
+```
+Las correlaciones positivas entre las variables con la dimensión 1, indicadas por cargas positivas, sugieren que las variables tienden a variar en la misma dirección. En otras palabras, cuando el valor de una variable aumenta, es probable que los valores de las otras variables también aumenten, y viceversa. Entre ellas encontramos: Libertad, Satisfacción, Finanzas, Comida, Inseguridad, Sanidad, Ingresos y Refugio.
+Las correlaciones negativas entre las variables con la dimensión 1, indicadas por cargas negativas, sugieren que las variables tienden a variar en direcciones opuestas. Esto significa que cuando el valor de una variable aumenta, es probable que los valores de las otras variables disminuyan, y viceversa. En resumen, las cargas negativas indican una relación inversa entre las variables, donde un aumento en una variable está asociado con una disminución en otra variable. Entre ellas encontramos: Felicidad, Salud y Bienestar. 
+
+##### ACP Felicidad y Bienestar dimensión reducida
+
+A continuación, se eliminarán de entre las parejas de variables más correlacionadas (que se encuentren solapadas), aquellas que tengan menos significancia para explicar las dimensiones (con el vector más pequeño) y se volverá a repetir el análisis para observar si mejora el ACP.
+
+Estas variables son: Salud, solapada con Felicidad; Libertad, solapada con Satisfacción; e Ingresos, que se encuentra solapada con Sanidad.
+```{r}
+#ACP en los datos transformados
+columnas_a_eliminar_FB <- c("Salud", "Libertad", "Ingresos")
+columnas_a_mantener_FB <- setdiff(names(datos_num_FB), columnas_a_eliminar_FB)
+datos_num2_FB <- datos_num_FB[, columnas_a_mantener_FB]
+
+acp2_FB <- PCA(datos_num2_FB, graph = FALSE) 
+
+#Gráfica
+par(mar = c(5, 4, 4, 8))  
+indice_80 <- which.max(acp2_FB$eig[,3] >= 80)
+# Graficar la inercia explicada por dimensión
+barplot(acp2_FB$eig[,2], main = "Inercia explicada por dimensión ACP",
+        xlab = "Dimensión", ylab = "Inercia", col = "lightblue")
+par(new = TRUE)
+plot(1:length(acp2_FB$eig[,3]), acp2_FB$eig[,3], type = "b", main = "",
+     xlab = "", ylab = "", axes = FALSE, col = "coral")
+axis(side = 4, at = pretty(range(acp2_FB$eig[,3])), col = "black", col.axis = "black")
+mtext("Inercia acumulada", side = 4, line = 3, col = "black")
+abline(v = indice_80, col = "green3")
+text(indice_80, acp2_FB$eig[indice_80, 3], "80%", pos = 2, col = "green3")
+print(paste("La dimensión que contiene el 80% acumulado es:", indice_80))
+
+#Graficar el ACP
+library(factoextra)
+fviz_pca_var(acp2_FB,axes = c(1,2),col.var = "contrib",
+ gradient.cols = c("#AFEEEE", "plum1", "pink2"),
+ repel = TRUE) + theme_minimal()
+print(kable(acp2_FB$var$contrib[,1:2]))
+```
+Se puede observar como el número de dimensiones se ha reducido de 7 a 5 para poder explicar al menos el 80% de la variabilidad total en los datos. Ahora, las dimensiones 1 y 2 explican una mayor inercia, en el caso de la primera, el 35.4%; mientras que en la segunda, el 19.1%.
+También se puede ver, tanto en el gráfico como en la tabla de significación de dimensiones, como las variables correspondientes a las preguntas de Finanzas, Comida, Sanidad y Bienestar, son más significativas en la dimensión 1; en cambio, las variables relacionadas con las preguntas de Felicidad, Satisfacción, Inseguridad y Refugio, lo son para la dimensión 2. Es por eso que la dimensión 1 se podría etiquetar como "Vitalidad y Estabilidad" y la 2 como "Emociones y Seguridad".
+
+
+#### ACP Ciencia y Tecnología
+```{r}
+datos_num_CT <- datos_num[, c("Comodidad", "Oportunidades", "Dependencia", "Ideologías", "Actualización", "Progreso")]
+```
+
+**Porcentaje acumulada de varianza**
+```{r, echo=FALSE}
+library(FactoMineR)
+
+#ACP en los datos transformados
+acp_CT <- PCA(datos_num_CT, graph = FALSE) 
+
+#Resultados
+print(kable(acp_CT$eig))
+```
+
+**Inercia explicada por dimensión**
+```{r}
+#Gráfica
+par(mar = c(5, 4, 4, 8))  
+indice_80 <- which.max(acp_CT$eig[,3] >= 80)
+# Graficar la inercia explicada por dimensión
+barplot(acp_CT$eig[,2], main = "Inercia explicada por dimensión ACP",
+        xlab = "Dimensión", ylab = "Inercia", col = "lightblue")
+par(new = TRUE)
+plot(1:length(acp_CT$eig[,3]), acp_CT$eig[,3], type = "b", main = "",
+     xlab = "", ylab = "", axes = FALSE, col = "coral")
+axis(side = 4, at = pretty(range(acp_CT$eig[,3])), col = "black", col.axis = "black")
+mtext("Inercia acumulada", side = 4, line = 3, col = "black")
+abline(v = indice_80, col = "green3")
+text(indice_80, acp_CT$eig[indice_80, 3], "80%", pos = 2, col = "green3")
+
+print(paste("La dimensión que contiene el 80% acumulado es:", indice_80))
+```
+En este caso, se necesitan 4 dimensiones para explicar el 80% de la varianza total.
+
+**Mapa de Factores del ACP**
+```{r, echo=FALSE}
+#Graficar el ACP
+library(factoextra)
+fviz_pca_var(acp_CT,axes = c(1,2),col.var = "contrib",
+ gradient.cols = c("#AFEEEE", "plum1", "pink2"),
+ repel = TRUE) + theme_minimal()
+```
+El mapa de factores del ACP, centrado únicamente en las variables, es una representación gráfica que muestra la relación entre las variables originales y los componentes principales obtenidos en el análisis. Se puede observar que la primera dimensión explica el 39.6% de la inercia; mientras que la segunda, el 22.8%.
+
+**Interpretación de los planos factoriales**
+En este caso existen muchas variables significativas (de color rosa), para la dimensión 1 encontramos las variables Comodidad, Oportunidad y Progreso; y para la dimensión 2, Dependencia e Ideología. La variable que no es tan importante (de color azul) para explicar las dimensiones es Actualización.
+
+En esta tabla podemos ver la contribución de cada variable para cada dimensión y verificar las variables significativas de estos planos.
+```{r}
+print(kable(acp_CT$var$contrib[,1:2]))
+```
+
+Tal como se ha visto en el análisis de correlaciones, las variables correlacionadas positivas son: Comodidad con Oportunidad (0.6511324), Comodidad con Progreso (0.5080296), Oportunidad con Progreso (0.4390979) y Dependencia con Ideologías (0.4366363); cada par de variables se encuentran muy cerca entre ellas. Por lo que hace a la correlación negativa, no encontramos ninguna destacable.
+
+En esta tabla podemos ver las correlaciones.
+```{r}
+print(kable(acp_CT$var$cor[,1:2]))
+```
+Las correlaciones positivas entre las variables con la dimensión 1: Comodidad, Oportunidades y Progreso.
+Las correlaciones negativas entre las variables con la dimensión 1: Dependencia, Ideologías y Actualización.
+
+##### ACP Ciencia y Tecnología dimensión reducida
+
+En este caso, al no haber variables superpuestas, la eliminación de variables no es una opción viable, ya que la reducción de dimensiones podría ocasionar una pérdida significativa de información valiosa.
+Es por esto que decidimos quedarnos con las 4 dimensiones para explicar el 80% de la variabilidad total de los datos. 
+
+```{r}
+print(kable(acp_CT$var$contrib[,1:2]))
+```
+Teniendo en cuenta el gráfico anterior sobre la contribución que aportan las variables a las dimensiones, podemos ver que las variables significativas para la dimensión 1 son Comodidad, Oportunidad, Actualización y Progreso; en cambio, para la dimensión 2 son Dependencia e Ideologías. Es por eso que la dimensión 1 se podría etiquetar como "Confort y Avance" y la 2 como "Sujeción y Creencia".
+
+
+
+## Modelos de Regresión
+
+
+
+### Variables potenciales explicativas (x)
+
+
+#### Valores missing 
+
+Antes de realizar los modelos de regresión, se llevó a cabo un análisis exhaustivo de las posibles variables explicativas. Durante este proceso, se examinó si las variables seleccionadas contenían una gran cantidad de valores perdidos. Si una variable presentaba demasiados datos faltantes, se consideraba su eliminación. En los casos donde existían variables con respuestas similares, se optaba por incluir aquellas que no tuvieran respuestas faltantes. Este enfoque garantizaba la integridad y la calidad de los datos utilizados en los modelos de regresión.
+
+Base de datos nueva con las variables seleccionadas:
+```{r}
+mod <- (`WVS_Cross-National_Wave_7_v5_0`)
+mod <- mod[, c("D_INTERVIEW", "C_COW_ALPHA", "Q260", "Q261", "Q262", "Q263", "Q269", "Q273", "Q274", "Q275", "Q278", "Q279", "Q289")]
+
+#Cambiar etiquetas
+colnames(mod) <- c("ID", "País", "Mujer",  "Nacimiento", "Edad", "Inmigración", "Ciudadano", "Estado_civil", "Hijos", "Educación", "Clase_social", "Trabajo", "Religión")
+
+#Convertir todas las columnas a numéricas excepto País
+mod[ , !(names(mod) %in% c("País"))] <- lapply(mod[ , !(names(mod) %in% c("País"))], as.numeric)
+mod$País <- factor(mod$País)
+
+#Seleción de países
+mod <- mod[mod$País %in% paises_seleccionados, ]
+mod$País <- as.factor(droplevels(mod$País))
+print(levels(mod$País))
+```
+
+En las preguntas del cuestionario, aquellas respuestas que hayan sido diferentes a las opciones propuestas, codificadas con valores negativos, las convertimos en NA's.
+```{r}
+#Definimos los valores que queremos reemplazar
+valores_a_reemplazar <- c(-1, -2, -4, -5)
+
+#Iteramos sobre cada columna del data frame
+for (col in names(mod)) {
+  # Reemplazar los valores especificados por NA
+  mod[[col]][mod[[col]] %in% valores_a_reemplazar] <- NA
+}
+```
+
+Calculamos el porcentaje de NA's:
+```{r}
+#Número de NA's por variable
+na_por_variable_mod <- colSums(is.na(mod))
+
+#Porcentaje de NA's por variable
+porcentaje_na_mod <- na_por_variable_mod / nrow(mod) * 100
+```
+
+**Tabla**
+Visualizamos los porcentajes de NA's en una tabla:
+```{r}
+#Tabla con el número absoluto y porcentaje de NA's por variable
+tabla_na_mod <- data.frame(NAs = na_por_variable_mod, Porcentaje = porcentaje_na_mod)
+kable(tabla_na_mod, caption = "Tabla de porcentajes NA's por variable")
+```
+
+**Gráfico**
+Visualizamos los porcentajes de NA's en un gráfico:
+```{r, warning=FALSE}
+#Creamos un data frame con los porcentajes de NA's y valores válidos
+#Porcentaje de valores válidos por variable
+validos_por_variable_mod <- colSums(!is.na(mod))
+porcentaje_validos_mod <- validos_por_variable_mod / nrow(mod) * 100
+df_mod <- data.frame(Variables = names(mod),
+  Porcentaje_NA = porcentaje_na_mod,
+  Porcentaje_Valido = porcentaje_validos_mod)
+
+#Convertimos los datos a formato largo (tidy)
+library(tidyr)
+df_long_mod <- pivot_longer(df_mod, cols = c(Porcentaje_NA, Porcentaje_Valido), names_to = "Tipo", values_to = "Porcentaje")
+df_long_mod$Variables <- factor(df_long_mod$Variables, levels = unique(df_long_mod$Variables))
+
+#Gráfico utilizando ggplot2
+ggplot(df_long_mod, aes(x = Porcentaje, y = reorder(Variables, Variables), fill = Tipo)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(title = "Porcentaje de NA's y valores válidos por variable",
+       x = "Porcentaje", y = "Variables") +
+  scale_fill_manual(values = c("lightcoral", "lightgreen"), name = "Tipo de Dato") +
+  theme_minimal()
+```
+Como se puede observar, las variables con el mayor número de valores perdidos (superior al 5%) son Ciudadano y Clase_social. Por lo tanto, estas variables serán eliminadas. Además, entre las variables con respuestas similares, se descartan aquellas con un mayor número de datos perdidos, conservando únicamente las que no presentan tantos valores faltantes; entre ellas encontramos Nacimiento. Las variables explicativas potenciales resultantes son: Mujer, Edad, Inmigración, Estado_civil, Hijos, Educación, Trabajo y Religión.
+
+**Eliminamos los NA's y variables con respuestas similares**
+```{r}
+#Eliminamos las columnas "Nacimiento", "Ciudadano" y "Clase_social"
+mod <- mod[, !colnames(mod) %in% c("Nacimiento", "Ciudadano", "Clase_social")]
+
+#Eliminamos los NA's
+mod <- na.omit(mod)
+```
+
+**Comprobación de NA's**
+Comprobamos que ya no quedan NA's en la base de datos:
+```{r, warning=FALSE}
+#Número de NA's por variable
+na_por_variable_mod <- colSums(is.na(mod))
+
+#Porcentaje de NA's por variable
+porcentaje_na_mod <- na_por_variable_mod / nrow(mod) * 100
+
+#Tabla con el número absoluto y porcentaje de NA's por variable
+tabla_na_mod <- data.frame(NAs = na_por_variable_mod, Porcentaje = porcentaje_na_mod)
+kable(tabla_na_mod, caption = "Tabla de porcentajes NA's por variable")
+
+#Creamos un data frame con los porcentajes de NA's y valores válidos
+#Porcentaje de valores válidos por variable
+validos_por_variable_mod <- colSums(!is.na(mod))
+porcentaje_validos_mod <- validos_por_variable_mod / nrow(mod) * 100
+df_mod <- data.frame(Variables = names(mod),
+  Porcentaje_NA = porcentaje_na_mod,
+  Porcentaje_Valido = porcentaje_validos_mod)
+
+#Convertimos los datos a formato largo (tidy)
+library(tidyr)
+df_long_mod <- pivot_longer(df_mod, cols = c(Porcentaje_NA, Porcentaje_Valido), names_to = "Tipo", values_to = "Porcentaje")
+df_long_mod$Variables <- factor(df_long_mod$Variables, levels = unique(df_long_mod$Variables))
+
+#Gráfico utilizando ggplot2
+ggplot(df_long_mod, aes(x = Porcentaje, y = reorder(Variables, Variables), fill = Tipo)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(title = "Porcentaje de NA's y valores válidos por variable",
+       x = "Porcentaje", y = "Variables") +
+  scale_fill_manual(values = c("lightcoral", "lightgreen"), name = "Tipo de Dato") +
+  theme_minimal()
+```
+
+
+
+#### Variables dummies
+
+A continuación, se convirtieron las variables seleccionadas en variables dummies.
+Una variable dummy, también conocida como variable indicadora, es una variable binaria que toma valores de 0 y 1 para representar la presencia o ausencia de una característica o categoría específica en datos categóricos. Por ejemplo, para la variable Mujer, 0 indica 'Hombre' y 1 'Mujer'. Son esenciales en análisis estadísticos y modelos econométricos para incluir variables categóricas en modelos numéricos, como la regresión lineal. Cuando una variable categórica tiene más de dos niveles, se necesitan múltiples variables dummy para representarla, con una categoría seleccionada como referencia para evitar la colinealidad perfecta. Por ejemplo, para la variable Educación con los niveles 'Primaria', 'Secundaria', 'Secundaria postobligatoria' y 'Universidad', se crean variables dummies para 'Secundaria', 'Secundaria postobligatoria' y 'Universidad', mientras que 'Primaria' actúa como referencia.
+
+
+Primero se reconstruyeron aquellas variables con muchas categorías, agrupando en una única aquellas que eran similares y para las variables con dos categorías se recodificaron con 0 o 1, creando de esta manera las variables dummies.
+```{r, warning= FALSE}
+#Mujer
+mod$Mujer <- ifelse(mod$Mujer == 1, 0, ifelse(mod$Mujer == 2, 1, mod$Mujer))
+
+#Inmigración
+mod$Inmigración <- ifelse(mod$Inmigración == 1, 0, ifelse(mod$Inmigración == 2, 1, mod$Inmigración))
+
+#Estado_civil
+mod$Estado_civil <- ifelse(mod$Estado_civil == 2, 1, ifelse(mod$Estado_civil %in% c(3, 4), 2,  ifelse(mod$Estado_civil %in% c(5, 6), 3, mod$Estado_civil)))
+
+#Educación
+mod$Educación <- ifelse(mod$Educación == 0, 1, ifelse(mod$Educación == 4, 3, ifelse(mod$Educación %in% c(5, 6, 7, 8), 4, mod$Educación)))
+
+#Trabajo
+mod$Trabajo <- as.numeric(ifelse(mod$Trabajo %in% c(2, 3, 5), 1, ifelse(mod$Trabajo %in% c(4, 6, 7, 8), 0, mod$Trabajo)))
+
+#Religión
+mod$Religión <- as.numeric(ifelse(mod$Religión %in% c(1, 2, 3, 4, 5, 6, 7, 8, 9), 1, mod$Religión))
+```
+
+
+Posteriormente, en el caso de las variables con más de una categoría, se crearon múltiples variables para representar cada una de ellas, excluyendo la variable de referencia y finalmente, se recodificaron estas variables con 0 o 1, generando las variables dummies correspondientes.
+```{r, warning= FALSE}
+library(dplyr)
+
+#Estado_civil
+mod <- mod %>%mutate(
+    Casado = ifelse(Estado_civil == 1, 1, 0),
+    Separado = ifelse(Estado_civil == 2, 1, 0))
+
+#Educación
+mod <- mod %>%mutate(
+    Secundaria = ifelse(Educación == 2, 1, 0),
+    Secundaria_postobligatoria = ifelse(Educación == 3, 1, 0),
+    Universidad = ifelse(Educación == 4, 1, 0))
+```
+
+
+De este modo, las categorías para cada variable explicativa fueron las siguientes:
+
+**Mujer**:
+0 Hombre
+1 Mujer
+```{r}
+par(mfrow=c(1,2))
+descriptiva(mod[,3], colnames(mod)[3], dades = mod)
+```
+Encontramos más mujeres que hombres.
+
+*Mujer por País*
+```{r, warning=FALSE}
+m_dist <- mod %>%
+  group_by(País, Mujer) %>%                     
+  summarise(Count = n()) %>%                        
+  group_by(País) %>%                                 
+  mutate(Percentage = Count / sum(Count)) %>%        
+  arrange(País, Mujer) %>%                       
+  ungroup()                                        
+
+m_dist <- m_dist %>%
+  spread(key = Mujer, value = Percentage) %>%     
+  select(-Count) %>%                                 
+  group_by(País) %>%                                 
+  summarise_all(list(~round(max(., na.rm = TRUE), 2))) 
+
+m_dist <- kable(m_dist, caption = "Distribución de Mujer por País")
+m_dist
+```
+En Australia, Brasil, China y los Países Bajos, la población femenina superó a la masculina, mientras que en Canadá, Egipto y Estados Unidos, sucedió lo contrario, se encontraron más hombres que mujeres. La disparidad más notable se observó en Australia.
+
+
+**Edad**:
+Valores numéricos, del número de años.
+```{r}
+par(mfrow=c(1,2))
+descriptiva(mod[,4], colnames(mod)[4], dades = mod)
+```
+Las edades van de 17 a 98, con media de 46.46777.
+
+*Edad por País*
+```{r}
+e_dist <- mod %>% 
+  group_by(País) %>%
+  summarise(Min = min(Edad), Max = max(Edad), Media = round(mean(Edad, na.rm = TRUE), 2))
+
+e_dist <- kable(e_dist, format = "html", caption = "Estadísticas de Edad por País")
+e_dist
+```
+La media de edad más joven se encontró en Egipto(39.70), mientras que la más elevada se registró en los Países Bajos(53.84), seguida por Australia(53.74).
+
+
+**Inmigración**:
+0 No inmigrante
+1 Inmigrante
+```{r}
+par(mfrow=c(1,2))
+descriptiva(mod[,5], colnames(mod)[5], dades = mod)
+```
+Hay más personas no inmigrantes.
+
+*Inmigración por País*
+```{r, warning=FALSE}
+i_dist <- mod %>%
+  group_by(País, Inmigración) %>%                     
+  summarise(Count = n()) %>%                        
+  group_by(País) %>%                                 
+  mutate(Percentage = Count / sum(Count)) %>%        
+  arrange(País, Inmigración) %>%                       
+  ungroup()                                        
+
+i_dist <- i_dist %>%
+  spread(key = Inmigración, value = Percentage) %>%     
+  select(-Count) %>%                                 
+  group_by(País) %>%                                 
+  summarise_all(list(~round(max(., na.rm = TRUE), 3))) 
+
+i_dist <- kable(i_dist, caption = "Distribución de Inmigración por País")
+i_dist
+```
+En todos los países analizados, destacó un predominio de personas no inmigrantes. Sin embargo, en el caso específico de China y Egipto, no se encontraron casos de inmigrantes en la muestra. Esto planteó un desafío para los análisis de regresión correspondientes, ya que la variable de Inmigración no aportaría información útil al incluirla, debido a la falta de casos para comparar. En consecuencia, tanto en la regresión para China como para Egipto, se tomó la decisión de eliminar esta variable para asegurar que los análisis se basaran en información válida y significativa.
+
+
+**Hijos**:
+Valores numéricos, del número de hijos.
+```{r}
+par(mfrow=c(1,2))
+descriptiva(mod[,6], colnames(mod)[6], dades = mod)
+```
+La media de hijos es de 1.500386.
+
+*Hijos por País*
+```{r}
+h_dist <- mod %>% 
+  group_by(País) %>%
+  summarise(Min = min(Hijos), Max = max(Hijos), Media = round(mean(Hijos, na.rm = TRUE), 2))
+
+h_dist <- kable(h_dist, format = "html", 
+                                  caption = "Estadísticas de Hijos por País")
+h_dist
+
+
+#Más de 5 hijos
+mas_5_hijos <- sum(mod$Hijos > 5, na.rm = TRUE)
+print(paste("Se han encontrado", mas_5_hijos, "observaciones con más de 5 hijos."))
+```
+La media de hijos más elevada se registró en Egipto (2.18), seguido de Brasil(1.85); en cambio, la más baja fue la de Canadá(1.07). También es importante destacar que se detectó un recuento muy elevado de hijos en varios países, especialmente en Brasil, con un máximo de 22 y en Estados Unidos con 15. Se decidió mantener estos resultados elevados debido a que había un número significativo de observaciones que tenían más de 5 hijos, concretamente 201. Por tanto, eliminar estas observaciones implicaría una pérdida de información para realizar las regresiones.
+
+
+**Trabajo**:
+0 No trabaja
+1 Trabaja
+```{r}
+par(mfrow=c(1,2))
+descriptiva(mod[,7], colnames(mod)[7], dades = mod)
+```
+Encontramos más personas trabajando.
+
+*Trabajo por País*
+```{r, warning=FALSE}
+t_dist <- mod %>%
+  group_by(País, Trabajo) %>%                     
+  summarise(Count = n()) %>%                        
+  group_by(País) %>%                                 
+  mutate(Percentage = Count / sum(Count)) %>%        
+  arrange(País, Trabajo) %>%                       
+  ungroup()                                        
+
+t_dist <- t_dist %>%
+  spread(key = Trabajo, value = Percentage) %>%     
+  select(-Count) %>%                                 
+  group_by(País) %>%                                 
+  summarise_all(list(~round(max(., na.rm = TRUE), 2))) 
+
+t_dist <- kable(t_dist, caption = "Distribución de Trabajo por País")
+t_dist
+```
+En cada país, la mayoría de las personas encuestadas estaban empleadas activamente, lo que indica que estaban trabajando.
+
+
+**Religión**:
+0 No religión
+1 Religión
+```{r}
+par(mfrow=c(1,2))
+descriptiva(mod[,8], colnames(mod)[8], dades = mod)
+```
+Hay más personas que siguen alguna religión.
+
+*Religión por País*
+```{r, warning=FALSE}
+r_dist <- mod %>%
+  group_by(País, Religión) %>%                     
+  summarise(Count = n()) %>%                        
+  group_by(País) %>%                                 
+  mutate(Percentage = Count / sum(Count)) %>%        
+  arrange(País, Religión) %>%                       
+  ungroup()                                        
+
+r_dist <- r_dist %>%
+  spread(key = Religión, value = Percentage) %>%     
+  select(-Count) %>%                                 
+  group_by(País) %>%                                 
+  summarise_all(list(~round(max(., na.rm = TRUE), 2))) 
+
+r_dist <- kable(r_dist, caption = "Distribución de Religión por País")
+r_dist
+```
+Por lo que hace a la variable Religión, se observó una considerable variabilidad en los resultados según el país analizado. En Australia, la muestra estaba distribuida equilibradamente entre quienes creían en una religión y los que no. En el caso de Brasil, destacó un alto porcentaje de creyentes, mientras que en China predominó la falta de esta. Canadá y Estados Unidos mostraron un porcentaje más elevado de religiosos respecto a los que no lo eran, aunque las diferencias no eran significativamente grandes. En cambio, Países Bajos presentó un porcentaje más alto de personas no religiosas. Por último, en Egipto, todos los participantes manifestaron creencia religiosa. Esta disparidad planteó un desafío para el análisis de regresión, ya que no había suficientes casos en algunas categorías para realizar comparaciones significativas. Por lo tanto, en el análisis de regresión para Egipto, se decidió excluir esta variable para garantizar que el análisis se basara en datos válidos y relevantes.
+
+
+**Estado_civil**:
+En el caso de la variable Estado civil, al tener más de dos categorías, se crearon un conjunto de variables dummy, una para cada una, excluyendo la de referencia. De este modo, cada variable nueva indicaba para cada individuo si se presentaba la categoría correspondiente (1) o no (0). Las variables dummy creadas fueron Casado y Separado, tomando como referencia Viudo/Soltero. De esta manera, cuando las nuevas variables tomaran un valor de 0, indicaría que el individuo se encontraba viudo o soltero.
+
+Antes de analizar las variables dummy, se ha estudiado la distribución de las categorías por país.
+```{r}
+ggplot(mod, aes(x = País, fill = factor(Estado_civil))) +
+  geom_bar(position = "fill") +  
+  labs(title = "Distribución Estado civil por País",
+       x = "País",
+       y = "Proporción") +
+  scale_fill_manual(name = "Estado civil",  
+                    values = c("1" = "lightblue", "2" = "lightgreen", "3" = "lightpink"),  
+                    labels = c("1" = "Casado", "2" = "Separado", "3" = "Viudo/Soltero")) +  
+  theme_minimal() 
+```
+Como se puede observar, la mayoría de los individuos, independientemente del país, se encontraban casados, destacando China por tener una proporción mayor. La segunda categoría dominante fue Viudo/Soltero, resaltando Brasil con el porcentaje más elevado. Por último, una pequeña parte de la proporción de los individuos estaban separados, siendo Estados Unidos el país con mayor porcentaje, seguido por Brasil.
+
+- Variable de referència: Viudo o soltero
+
+- Dummy Casado
+  0 No casado
+  1 Casado
+```{r}
+par(mfrow=c(1,2))
+descriptiva(mod[,9], colnames(mod)[9], dades = mod)
+```
+
+*Casado por País*
+```{r, warning=FALSE}
+c_dist <- mod %>%
+  group_by(País, Casado) %>%                     
+  summarise(Count = n()) %>%                        
+  group_by(País) %>%                                 
+  mutate(Percentage = Count / sum(Count)) %>%        
+  arrange(País, Casado) %>%                       
+  ungroup()                                        
+
+c_dist <- c_dist %>%
+  spread(key = Casado, value = Percentage) %>%     
+  select(-Count) %>%                                 
+  group_by(País) %>%                                 
+  summarise_all(list(~round(max(., na.rm = TRUE), 2))) 
+
+c_dist <- kable(c_dist, caption = "Distribución de Casado por País")
+c_dist
+```
+En todos los países se encontró una mayor proporción de individuos casados que no casados. En el caso de China y Egipto, esta discrepancia fue significativamente mayor.
+
+- Dummy Separado
+  0 No separado
+  1 Separado
+```{r}
+par(mfrow=c(1,2))
+descriptiva(mod[,10], colnames(mod)[10], dades = mod)
+```
+
+*Separado por País*
+```{r, warning=FALSE}
+s_dist <- mod %>%
+  group_by(País, Separado) %>%                     
+  summarise(Count = n()) %>%                        
+  group_by(País) %>%                                 
+  mutate(Percentage = Count / sum(Count)) %>%        
+  arrange(País, Separado) %>%                       
+  ungroup()                                        
+
+s_dist <- s_dist %>%
+  spread(key = Separado, value = Percentage) %>%     
+  select(-Count) %>%                                 
+  group_by(País) %>%                                 
+  summarise_all(list(~round(max(., na.rm = TRUE), 2))) 
+
+s_dist <- kable(s_dist, caption = "Distribución de Separado por País")
+s_dist
+```
+En cambio, por lo que hace a la variable de Separado, sucedió al contrario; el porcentaje de Separados fue menor de los que no lo estaban. El país que contenía un porcentaje más elevado (0.13) fue Estados Unidos.
+
+
+**Educación**:
+Finalmente, para la variable Educación, se siguió el mismo procedimiento que con la variable anterior. Al tener más de dos categorías, se crearon un conjunto de variables dummy, una para cada categoría, excluyendo la de referencia. Así, cada variable nueva indicaría si un individuo pertenecía a la categoría correspondiente (1) o no (0). Las variables dummy creadas fueron Secundaria, Secundaria postobligatoria y Universidad, tomando como referencia Primaria. De esta manera, cuando las nuevas variables tuvieran un valor de 0, iniciaría que el individuo tenía un nivel de educación de Primaria.
+
+Previamente al análisis de las variables dummy, se ha estudiado la distribución de las categorías por país.
+```{r}
+ggplot(mod, aes(x = País, fill = factor(Educación))) +
+  geom_bar(position = "fill") + 
+  labs(title = "Distribución Educación por País",
+       x = "País",
+       y = "Proporción") +
+  scale_fill_manual(name = "Educación",  
+                    values = c("1" = "lightblue", "2" = "lightgreen", "3" = "lightpink", "4" = "#EEB4B4"), 
+                    labels = c("1" = "Primaria", "2" = "Secundaria", "3" = "Secundaria postobligatoria", "4" = "Universidad")) +  
+  theme_minimal() 
+```
+Como se puede observar, en esta variable existe una gran divergencia entre los resultados para cada país. En el caso de Australia, Canadá, Países Bajos y Estados Unidos, la mayoría de los individuos tenían estudios de secundaria postobligatoria o universitarios. Específicamente, en Canadá, Países Bajos y Estados Unidos, destacaron los estudios universitarios, mientras que en Australia, tanto los estudios de secundaria postobligatoria como los universitarios estaban igualados. En cambio, en China, a pesar de tener una distribución bastante homogénea, predominaban los estudios de primaria y secundaria, siendo esta última la categoría mayoritaria. Para acabar, en el caso de Brasil y Egipto, tenían resultados bastante uniformes. A pesar de ello, destacaban sutilmente los estudios de secundaria postobligatoria, seguidos por los estudios de primaria.
+
+- Variable de referència: Primaria
+
+- Dummy Secundaria
+  0 No secundaria
+  1 Secundaria
+```{r}
+par(mfrow=c(1,2))
+descriptiva(mod[,11], colnames(mod)[11], dades = mod)
+```
+
+*Secundaria por País*
+```{r, warning=FALSE}
+sec_dist <- mod %>%
+  group_by(País, Secundaria) %>%                     
+  summarise(Count = n()) %>%                        
+  group_by(País) %>%                                 
+  mutate(Percentage = Count / sum(Count)) %>%        
+  arrange(País, Secundaria) %>%                       
+  ungroup()                                        
+
+sec_dist <- sec_dist %>%
+  spread(key = Secundaria, value = Percentage) %>%     
+  select(-Count) %>%                                 
+  group_by(País) %>%                                 
+  summarise_all(list(~round(max(., na.rm = TRUE), 2))) 
+
+sec_dist <- kable(sec_dist, caption = "Distribución de Secundaria por País")
+sec_dist
+```
+En el caso de la variable Secundaria, se obtuvieron porcentajes muy bajos. La mayoría de los individuos, independientemente del país, no tenían el nivel de educación de Secundaria. El porcentaje más elevado se encontró fue en China, con un 0.31.
+
+- Dummy Secundaria postobligatoria
+  0 No secundaria postobligatoria
+  1 Secundaria postobligatoria
+```{r}
+par(mfrow=c(1,2))
+descriptiva(mod[,12], colnames(mod)[12], dades = mod)
+```
+
+*Secundaria por País*
+```{r, warning=FALSE}
+sec_post_dist <- mod %>%
+  group_by(País, Secundaria_postobligatoria) %>%                     
+  summarise(Count = n()) %>%                        
+  group_by(País) %>%                                 
+  mutate(Percentage = Count / sum(Count)) %>%        
+  arrange(País, Secundaria_postobligatoria) %>%                       
+  ungroup()                                        
+
+sec_post_dist <- sec_post_dist %>%
+  spread(key = Secundaria_postobligatoria, value = Percentage) %>%     
+  select(-Count) %>%                                 
+  group_by(País) %>%                                 
+  summarise_all(list(~round(max(., na.rm = TRUE), 2))) 
+
+sec_post_dist <- kable(sec_post_dist, caption = "Distribución de Secundaria postobligatoria por País")
+sec_post_dist
+```
+En cambio, para la variable Secundaria postobligatoria, los porcentajes fueron más elevados en comparación con la variable anterior. En algunos casos, se acercaron al 50%, como sucedió Estados Unidos (0.47) y Australia (0.46). El porcentaje más bajo se encontró en China, con un 0.23.
+
+- Dummy Universidad
+  0 No universidad
+  1 Universidad
+```{r}
+par(mfrow=c(1,2))
+descriptiva(mod[,13], colnames(mod)[13], dades = mod)
+```
+
+*Universidad por País*
+```{r, warning=FALSE}
+u_dist <- mod %>%
+  group_by(País, Universidad) %>%                     
+  summarise(Count = n()) %>%                        
+  group_by(País) %>%                                 
+  mutate(Percentage = Count / sum(Count)) %>%        
+  arrange(País, Universidad) %>%                       
+  ungroup()                                        
+
+u_dist <- u_dist %>%
+  spread(key = Universidad, value = Percentage) %>%     
+  select(-Count) %>%                                 
+  group_by(País) %>%                                 
+  summarise_all(list(~round(max(., na.rm = TRUE), 2))) 
+
+u_dist <- kable(u_dist, caption = "Distribución de Secundaria postobligatoria por País")
+u_dist
+```
+Para finalizar, en la variable Universidad se encontraron resultados bastante dispares. En países como Canadá, Países Bajos y Estados Unidos, los porcentajes superaron el 50%, indicando que una proporción mayor de sus individuos tenía un estudio universitario. En cambio, en Brasil y Egipto, los porcentajes fueron significativamente menores, lo que daba a entender que tenían unos niveles de estudio inferiores.
+
+
+
+### Regresiones
+
+Un modelo de regresión es una herramienta estadística que se utiliza para investigar y modelar la relación entre una variable dependiente (la que queremos predecir) y una o más variables explicativas (las que utilizamos para hacer la predicción).
+El propósito principal de un modelo de regresión es predecir o estimar el valor de la variable dependiente basándose en los valores de las variables explicativas. 
+
+En este caso, se buscaba desarrollar modelos de regresión para predecir las variables más significativas en los bloques de felicidad y bienestar, así como en ciencia y tecnología, utilizando las variables socio demográficas seleccionadas y adaptándolas a cada país estudiado.
+
+Las variables explicativas incluidas en las regresiones fueron: Mujer, Edad, Inmigración, Hijos, Trabajo, Religión, Casado, Separado, Secundaria, Secundaria postobligatoria y Universidad. Sin embargo, como se observó anteriormente, la variable Inmigración no aportaba suficiente variación en los datos de los países de China y de Egipto, para determinar sus coeficientes de regresión. Por ello, en las regresiones para estos países, se eliminó dicha variable. Del mismo modo, en el caso de la variable Religión en Egipto, tampoco contribuía suficiente variabilidad, por lo que se eliminó en las regresiones para este país.
+Las variables dependientes seleccionadas del bloque de felicidad y bienestar fueron: Felicidad, Satisfacción y Sanidad.
+Las variables dependientes seleccionadas del bloque ciencia y tecnología fueron: Comodidad, Oportunidades y Progreso.
+```{r}
+dep <- bd[, c("ID", "País", "Felicidad", "Satisfacción", "Sanidad", "Comodidad", "Oportunidades", "Progreso")]
+
+#Convertir todas las columnas a numéricas excepto País
+dep[ , !(names(dep) %in% c("País"))] <- lapply(dep[ , !(names(dep) %in% c("País"))], as.numeric)
+
+#Seleción de países
+dep <- dep[dep$País %in% paises_seleccionados, ]
+dep$País <- droplevels(dep$País)
+print(levels(dep$País))
+```
+
+
+En primer lugar, se fusionaron las dos bases de datos, combinando las preguntas para cada bloque y las variables explicativas demográficas.
+```{r}
+#Unimos las dos bases de datos
+reg <- inner_join(dep, mod, by="ID")
+
+#Eliminamos las columnas repetidas País.x y País.y, manteniendo solo una de ellas. Asumimos que queremos mantener País.x.
+reg <- reg %>% rename(País = País.x) %>%
+  select(-País.y)  
+```
+
+
+A continuación, se realizaron las regresiones para cada una de las variables dependientes en función de cada uno de los países estudiados.
+
+
+- Variables correspondientes a preguntas de felicidad y bienestar
+
+#### Regresión Felicidad
+
+**Australia**
+```{r, warning=FALSE}
+AF <- lm(Felicidad ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="AUL"))
+
+#Resumen del modelo
+summary(AF)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(AF)
+
+#Verificar no colinealidad
+library(car)
+vif(AF)
+```
+
+**Brasil**
+```{r, warning=FALSE}
+BF <- lm(Felicidad ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="BRA"))
+
+#Resumen del modelo
+summary(BF)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(BF)
+
+#Verificar no colinealidad
+vif(BF)
+```
+
+**Canadá**
+```{r, warning=FALSE}
+CF <- lm(Felicidad ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="CAN"))
+
+#Resumen del modelo
+summary(CF)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(CF)
+
+#Verificar no colinealidad
+vif(CF)
+```
+
+**China**
+```{r, warning=FALSE}
+CHF <- lm(Felicidad ~ Mujer + Edad + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="CHN"))
+
+#Resumen del modelo
+summary(CHF)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(CHF)
+
+#Verificar no colinealidad
+vif(CHF)
+```
+
+**Egipto**
+```{r, warning=FALSE}
+EF <- lm(Felicidad ~ Mujer + Edad + Hijos + Trabajo + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="EGY"))
+
+#Resumen del modelo
+summary(EF)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(EF)
+
+#Verificar no colinealidad
+vif(EF)
+```
+
+**Países Bajos**
+```{r, warning=FALSE}
+NF <- lm(Felicidad ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="NTH"))
+
+#Resumen del modelo
+summary(NF)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(NF)
+
+#Verificar no colinealidad
+vif(NF)
+```
+
+**Estados Unidos**
+```{r, warning=FALSE}
+UF <- lm(Felicidad ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="USA"))
+
+#Resumen del modelo
+summary(UF)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(UF)
+
+#Verificar no colinealidad
+vif(UF)
+```
+
+
+#### Regresión Satisfacción
+
+**Australia**
+```{r, warning=FALSE}
+AS <- lm(Satisfacción ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="AUL"))
+
+#Resumen del modelo
+summary(AS)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(AS)
+
+#Verificar no colinealidad
+vif(AS)
+```
+
+**Brasil**
+```{r, warning=FALSE}
+BS <- lm(Satisfacción ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="BRA"))
+
+#Resumen del modelo
+summary(BS)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(BS)
+
+#Verificar no colinealidad
+vif(BS)
+```
+
+**Canadá**
+```{r, warning=FALSE}
+CS <- lm(Satisfacción ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="CAN"))
+
+#Resumen del modelo
+summary(CS)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(CS)
+
+#Verificar no colinealidad
+vif(CS)
+```
+
+**China**
+```{r, warning=FALSE}
+CHS <- lm(Satisfacción ~ Mujer + Edad + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="CHN"))
+
+#Resumen del modelo
+summary(CHS)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(CHS)
+
+#Verificar no colinealidad
+vif(CHS)
+```
+
+**Egipto**
+```{r, warning=FALSE}
+ES <- lm(Satisfacción ~ Mujer + Edad + Hijos + Trabajo + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="EGY"))
+
+#Resumen del modelo
+summary(ES)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(ES)
+
+#Verificar no colinealidad
+vif(ES)
+```
+
+**Países Bajos**
+```{r, warning=FALSE}
+NS <- lm(Satisfacción ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="NTH"))
+
+#Resumen del modelo
+summary(NS)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(NS)
+
+#Verificar no colinealidad
+vif(NS)
+```
+
+**Estados Unidos**
+```{r, warning=FALSE}
+US <- lm(Satisfacción ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="USA"))
+
+#Resumen del modelo
+summary(US)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(US)
+
+#Verificar no colinealidad
+vif(US)
+```
+
+
+#### Regresión Sanidad
+
+**Australia**
+```{r, warning=FALSE}
+ASN <- lm(Sanidad ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="AUL"))
+
+#Resumen del modelo
+summary(ASN)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(ASN)
+
+#Verificar no colinealidad
+vif(ASN)
+```
+
+**Brasil**
+```{r, warning=FALSE}
+BSN <- lm(Sanidad ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="BRA"))
+
+#Resumen del modelo
+summary(BSN)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(BSN)
+
+#Verificar no colinealidad
+vif(BSN)
+```
+
+**Canadá**
+```{r, warning=FALSE}
+CSN <- lm(Sanidad ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="CAN"))
+
+#Resumen del modelo
+summary(CSN)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(CSN)
+
+#Verificar no colinealidad
+vif(CSN)
+```
+
+**China**
+```{r, warning=FALSE}
+CHSN <- lm(Sanidad ~ Mujer + Edad + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="CHN"))
+
+#Resumen del modelo
+summary(CHSN)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(CHSN)
+
+#Verificar no colinealidad
+vif(CHSN)
+```
+
+**Egipto**
+```{r, warning=FALSE}
+ESN <- lm(Sanidad ~ Mujer + Edad + Hijos + Trabajo + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="EGY"))
+
+#Resumen del modelo
+summary(ESN)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(ESN)
+
+#Verificar no colinealidad
+vif(ESN)
+```
+
+**Países Bajos**
+```{r, warning=FALSE}
+NSN <- lm(Sanidad ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="NTH"))
+
+#Resumen del modelo
+summary(NSN)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(NSN)
+
+#Verificar no colinealidad
+vif(NSN)
+```
+
+**Estados Unidos**
+```{r, warning=FALSE}
+USN <- lm(Sanidad ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="USA"))
+
+#Resumen del modelo
+summary(USN)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(USN)
+
+#Verificar no colinealidad
+vif(USN)
+```
+
+
+- Variables correspondientes a preguntas de ciencia y tecnología
+
+#### Regresión Comodidad
+
+**Australia**
+```{r, warning=FALSE}
+AC <- lm(Comodidad ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="AUL"))
+
+#Resumen del modelo
+summary(AC)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(AC)
+
+#Verificar no colinealidad
+vif(AC)
+```
+
+**Brasil**
+```{r, warning=FALSE}
+BC <- lm(Comodidad ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="BRA"))
+
+#Resumen del modelo
+summary(BC)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(BC)
+
+#Verificar no colinealidad
+vif(BC)
+```
+
+**Canadá**
+```{r, warning=FALSE}
+CC <- lm(Comodidad ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="CAN"))
+
+#Resumen del modelo
+summary(CC)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(CC)
+
+#Verificar no colinealidad
+vif(CC)
+```
+
+**China**
+```{r, warning=FALSE}
+CHC <- lm(Comodidad ~ Mujer + Edad + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="CHN"))
+
+#Resumen del modelo
+summary(CHC)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(CHC)
+
+#Verificar no colinealidad
+vif(CHC)
+```
+
+**Egipto**
+```{r, warning=FALSE}
+EC <- lm(Comodidad ~ Mujer + Edad + Hijos + Trabajo + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="EGY"))
+
+#Resumen del modelo
+summary(EC)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(EC)
+
+#Verificar no colinealidad
+vif(EC)
+```
+
+**Países Bajos**
+```{r, warning=FALSE}
+NC <- lm(Comodidad ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="NTH"))
+
+#Resumen del modelo
+summary(NC)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(NC)
+
+#Verificar no colinealidad
+vif(NC)
+```
+
+**Estados Unidos**
+```{r, warning=FALSE}
+UC <- lm(Comodidad ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="USA"))
+
+#Resumen del modelo
+summary(UC)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(UC)
+
+#Verificar no colinealidad
+vif(UC)
+```
+
+
+#### Regresión Oportunidades
+
+**Australia**
+```{r, warning=FALSE}
+AO <- lm(Oportunidades ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="AUL"))
+
+#Resumen del modelo
+summary(AO)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(AO)
+
+#Verificar no colinealidad
+vif(AO)
+```
+
+**Brasil**
+```{r, warning=FALSE}
+BO <- lm(Oportunidades ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="BRA"))
+
+#Resumen del modelo
+summary(BO)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(BO)
+
+#Verificar no colinealidad
+vif(BO)
+```
+
+**Canadá**
+```{r, warning=FALSE}
+CO <- lm(Oportunidades ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="CAN"))
+
+#Resumen del modelo
+summary(CO)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(CO)
+
+#Verificar no colinealidad
+vif(CO)
+```
+
+**China**
+```{r, warning=FALSE}
+CHO <- lm(Oportunidades ~ Mujer + Edad + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="CHN"))
+
+#Resumen del modelo
+summary(CHO)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(CHO)
+
+#Verificar no colinealidad
+vif(CHO)
+```
+
+**Egipto**
+```{r, warning=FALSE}
+EO <- lm(Oportunidades ~ Mujer + Edad + Hijos + Trabajo + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="EGY"))
+
+#Resumen del modelo
+summary(EO)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(EO)
+
+#Verificar no colinealidad
+vif(EO)
+```
+
+**Países Bajos**
+```{r, warning=FALSE}
+NO <- lm(Oportunidades ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="NTH"))
+
+#Resumen del modelo
+summary(NO)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(NO)
+
+#Verificar no colinealidad
+vif(NO)
+```
+
+**Estados Unidos**
+```{r, warning=FALSE}
+UO <- lm(Oportunidades ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="USA"))
+
+#Resumen del modelo
+summary(UO)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(UO)
+
+#Verificar no colinealidad
+vif(UO)
+```
+
+
+#### Regresión Progreso
+
+**Australia**
+```{r, warning=FALSE}
+AP <- lm(Progreso ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="AUL"))
+
+#Resumen del modelo
+summary(AP)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(AP)
+
+#Verificar no colinealidad
+vif(AP)
+```
+
+**Brasil**
+```{r, warning=FALSE}
+BP <- lm(Progreso ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="BRA"))
+
+#Resumen del modelo
+summary(BP)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(BP)
+
+#Verificar no colinealidad
+vif(BP)
+```
+
+**Canadá**
+```{r, warning=FALSE}
+CP <- lm(Progreso ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="CAN"))
+
+#Resumen del modelo
+summary(CP)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(CP)
+
+#Verificar no colinealidad
+vif(CP)
+```
+
+**China**
+```{r, warning=FALSE}
+CHP <- lm(Progreso ~ Mujer + Edad + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="CHN"))
+
+#Resumen del modelo
+summary(CHP)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(CHP)
+
+#Verificar no colinealidad
+vif(CHP)
+```
+
+**Egipto**
+```{r, warning=FALSE}
+EP <- lm(Progreso ~ Mujer + Edad + Hijos + Trabajo + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="EGY"))
+
+#Resumen del modelo
+summary(EP)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(EP)
+
+#Verificar no colinealidad
+vif(EP)
+```
+
+**Países Bajos**
+```{r, warning=FALSE}
+NP <- lm(Progreso ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="NTH"))
+
+#Resumen del modelo
+summary(NP)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(NP)
+
+#Verificar no colinealidad
+vif(NP)
+```
+
+**Estados Unidos**
+```{r, warning=FALSE}
+UP <- lm(Progreso ~ Mujer + Edad + Inmigración + Hijos + Trabajo + Religión + Casado + Separado + Secundaria + Secundaria_postobligatoria + Universidad, data = reg, subset=(País=="USA"))
+
+#Resumen del modelo
+summary(UP)
+
+#Diagnóstico del modelo
+par(mfrow = c(2, 2))
+plot(UP)
+
+#Verificar no colinealidad
+vif(UP)
+```
+
+Durante la realización de cada modelo, se llevó a cabo un diagnóstico exhaustivo para confirmar la linealidad, homocedasticidad, independencia y normalidad de los errores, además de verificar la no colinealidad.
+Estudiando las regresiones generadas, se observó que los modelos no cumplían con la propiedad de homocedasticidad; es decir, la varianza de los errores no eran constantes a lo largo de las observaciones. Esta situación planteaba un riesgo para la validez de los resultados de la regresión, aunque únicamente afectaba a los errores estándar, sin alterar los coeficientes estimados. 
+Para abordar esta problemática, se aplicó una corrección mediante la estimación de los errores utilizando la matriz HC3, la cual ajusta la matriz de varianzas y covarianzas estimadas. Esta corrección resultó en un aumento de algunos errores estándar, pero no disminuyó la significatividad de las estimaciones.
+```{r}
+library(lmtest)
+library(sandwich)
+
+#Coeficientes Felicidad
+mod_F <- list(
+  coeftest(AF, vcov = vcovHC(AF, type = "HC3")),
+  coeftest(BF, vcov = vcovHC(BF, type = "HC3")),
+  coeftest(CF, vcov = vcovHC(CF, type = "HC3")),
+  coeftest(CHF, vcov = vcovHC(CHF, type = "HC3")),
+  coeftest(EF, vcov = vcovHC(EF, type = "HC3")),
+  coeftest(NF, vcov = vcovHC(NF, type = "HC3")),
+  coeftest(UF, vcov = vcovHC(UF, type = "HC3"))
+)
+
+#Coeficientes Satisfacción
+mod_S <- list(
+  coeftest(AS, vcov = vcovHC(AS, type = "HC3")),
+  coeftest(BS, vcov = vcovHC(BS, type = "HC3")),
+  coeftest(CS, vcov = vcovHC(CS, type = "HC3")),
+  coeftest(CHS, vcov = vcovHC(CHS, type = "HC3")),
+  coeftest(ES, vcov = vcovHC(ES, type = "HC3")),
+  coeftest(NS, vcov = vcovHC(NS, type = "HC3")),
+  coeftest(US, vcov = vcovHC(US, type = "HC3"))
+)
+
+#Coeficientes Sanidad
+mod_SN <- list(
+  coeftest(ASN, vcov = vcovHC(ASN, type = "HC3")),
+  coeftest(BSN, vcov = vcovHC(BSN, type = "HC3")),
+  coeftest(CSN, vcov = vcovHC(CSN, type = "HC3")),
+  coeftest(CHSN, vcov = vcovHC(CHSN, type = "HC3")),
+  coeftest(ESN, vcov = vcovHC(ESN, type = "HC3")),
+  coeftest(NSN, vcov = vcovHC(NSN, type = "HC3")),
+  coeftest(USN, vcov = vcovHC(USN, type = "HC3"))
+)
+
+#Coeficientes Comodidad
+mod_C <- list(
+  coeftest(AC, vcov = vcovHC(AC, type = "HC3")),
+  coeftest(BC, vcov = vcovHC(BC, type = "HC3")),
+  coeftest(CC, vcov = vcovHC(CC, type = "HC3")),
+  coeftest(CHC, vcov = vcovHC(CHC, type = "HC3")),
+  coeftest(EC, vcov = vcovHC(EC, type = "HC3")),
+  coeftest(NC, vcov = vcovHC(NC, type = "HC3")),
+  coeftest(UC, vcov = vcovHC(UC, type = "HC3"))
+)
+
+#Coeficientes Oportunidades
+mod_O <- list(
+  coeftest(AO, vcov = vcovHC(AO, type = "HC3")),
+  coeftest(BO, vcov = vcovHC(BO, type = "HC3")),
+  coeftest(CO, vcov = vcovHC(CO, type = "HC3")),
+  coeftest(CHO, vcov = vcovHC(CHO, type = "HC3")),
+  coeftest(EO, vcov = vcovHC(EO, type = "HC3")),
+  coeftest(NO, vcov = vcovHC(NO, type = "HC3")),
+  coeftest(UO, vcov = vcovHC(UO, type = "HC3"))
+)
+
+#Coeficientes Progreso
+mod_P <- list(
+  coeftest(AP, vcov = vcovHC(AP, type = "HC3")),
+  coeftest(BP, vcov = vcovHC(BP, type = "HC3")),
+  coeftest(CP, vcov = vcovHC(CP, type = "HC3")),
+  coeftest(CHP, vcov = vcovHC(CHP, type = "HC3")),
+  coeftest(EP, vcov = vcovHC(EP, type = "HC3")),
+  coeftest(NP, vcov = vcovHC(NP, type = "HC3")),
+  coeftest(UP, vcov = vcovHC(UP, type = "HC3"))
+)
+```
+
+
+
+### Análisis de los coeficientes
+
+A continuación se presenta un análisis de los coeficientes de las regresiones realizadas para cada país y variable dependiente de cada bloque (felicidad y bienestar, así como ciencia y tecnología), tras haber corregido el problema de heterocedasticidad.
+
+Función para extraer observaciones, R² y R² ajustado
+```{r}
+#Extraer n, R² y R² ajustado
+extract_info <- function(model) {
+  n <- length(model$fitted.values)
+  r2 <- summary(model)$r.squared
+  return(c(Observaciones = n, R2 = r2))
+}
+```
+
+
+- Variables correspondientes a preguntas de felicidad y bienestar
+
+#### Coeficientes Felicidad
+```{r, warning=FALSE}
+library(stargazer)
+
+stargazer(mod_F,
+           type = "text",
+           keep.stat = c("n", "rsq", "adj.rsq"),
+           column.labels = c("AUL", "BRA", "CAN", "CHN", "EGY", "NTH", "USA"),
+           title = "Coeficientes de Felicidad",
+           digits = 2)
+
+#Crear un data frame con los resultados
+info_Felicidad <- data.frame(
+  País = c("AUL", "BRA", "CAN", "CHN", "EGY", "NTH", "USA"),
+  t(sapply(list(AF, BF, CF, CHF, EF, NF, UF), extract_info)))
+kable(t(info_Felicidad)[-1, ], col.names = info_df$País, digits = 2, caption = "Resumen modelos Felicidad")
+```
+En primer lugar, se estudiaron las variables del bloque de felicidad y bienestar.
+
+
+Para la variable felicidad se observaron diversas relaciones respecto a los diferentes países estudiados:
+
+En Australia, se observaron relaciones significativamente negativas para las mujeres, lo cual sugiere que los hombres experimentan niveles más altos de felicidad. Además, se encontró que tener una edad más avanzada, ciertas afiliaciones religiosas y el estado civil de estar casado están asociados con niveles más bajos de felicidad.
+
+En el caso de Brasil, la edad mostró una relación positiva significativa, indicando que mayores edades están relacionadas con mayores niveles de felicidad. Sin embargo, ciertas afiliaciones religiosas y la educación universitaria mostraron relaciones negativas significativas, sugiriendo que estos factores pueden llevar a menores niveles de felicidad.
+
+En Canadá, la edad, tener hijos, estar empleado, ciertas afiliaciones religiosas y estar casado mostraron relaciones negativas significativas, sugiriendo que estos aspectos pueden contribuir a niveles más bajos de felicidad en la población canadiense.
+
+En cambio, en China, ser mujer, ser mayor y estar casado mostraron relaciones negativas significativas, mientras que el empleo y la religión las relaciones eran positivas. Esto sugería que en China, ciertos aspectos biológicos y de relación afectan negativamente la felicidad, mientras que tener empleo y seguir una religión pueden contribuir positivamente.
+
+En Egipto, estar separado mostró una relación positiva significativa con la felicidad, mientras que ser mujer y tener ciertos niveles educativos (educación secundaria postobligatoria y universitaria) tuvieron asociaciones negativas.
+
+Por otro lado, en los Países Bajos, la inmigración mostró una relación positiva significativa con la felicidad, mientras que estar casado y tener hijos mostraron relaciones negativas, indicando patrones distintos en comparación con otros países.
+
+Finalmente, en Estados Unidos, ser mujer, ser mayor, tener hijos, estar empleado, ciertas afiliaciones religiosas y estar casado mostraron relaciones negativas significativas, reflejando cómo estos factores pueden influir negativamente en los niveles de felicidad en la sociedad estadounidense.
+
+En general, en todos los países, estar casado pareció afectar negativamente a la felicidad. Sin embargo, es importante destacar que resaltaron diferencias significativas en cómo otros factores influyeron en la felicidad según el país. Por ejemplo, en China, a diferencia del resto de los países, la educación universitaria era una vía importante para la movilidad social y el reconocimiento, lo que contribuyó positivamente a la felicidad. En contraste, en muchos países desarrollados, como Australia, Canadá, y Estados Unidos, las altas expectativas, la deuda estudiantil y las demandas laborales pudieron pesar negativamente sobre los graduados, afectando su felicidad.
+
+Por lo que hace a los coeficientes de determinación (R²) obtenidos, variaron considerablemente, desde 0.0163 en Brasil hasta 0.0676 en Canadá. Esto indicó que entre aproximadamente el 1.63% y el 6.76% de la variación en el índice de felicidad pudo atribuirse a las variables analizadas en el estudio. Estos hallazgos sugieren que, aunque se encontró una relación estadísticamente significativa, es probable que otros factores no considerados en el modelo tuvieran un impacto considerable en la percepción de la felicidad en cada país investigado.
+
+
+#### Coeficientes Satisfacción
+```{r, warning=FALSE}
+stargazer(mod_S,
+           type = "text",
+           keep.stat = c("n", "rsq", "adj.rsq"),
+           column.labels = c("AUL", "BRA", "CAN", "CHN", "EGY", "NTH", "USA"),
+           title = "Coeficientes de Satisfacción",
+           digits = 2)
+
+#Crear un data frame con los resultados
+info_Satisfacción <- data.frame(
+  País = c("AUL", "BRA", "CAN", "CHN", "EGY", "NTH", "USA"),
+  t(sapply(list(AS, BS, CS, CHS, ES, NS, US), extract_info)))
+kable(t(info_Satisfacción)[-1, ], col.names = info_df$País, digits = 2, caption = "Resumen modelos Satisfacción")
+```
+En cuanto a la variable de satisfacción:
+
+En el caso de Australia, se encontró que ser mujer, tener una edad más avanzada y estar casado estaban positivamente relacionados con mayores niveles de satisfacción.
+
+En Brasil, tener un mayor número de hijos fue el factor principal asociado con una mayor satisfacción, aunque tener educación universitaria tuvo un efecto negativo en la satisfacción.
+
+Por otro lado, en Canadá, las edades más avanzadas, tener hijos, estar empleados, tener creencias religiosas, estar casados y poseer educación avanzada (secundaria postobligatoria y universitaria) contribuyeron positivamente a la satisfacción de los canadienses.
+
+En China, ser mujer, tener una edad avanzada y haber completado estudios universitarios mostraron una relación positiva con la satisfacción, mientras que estar separado tuvo un impacto negativo.
+
+Para el caso de Egipto, ser mujer, tener una edad avanzada y niveles educativos que van desde secundaria hasta universitaria se asociaron positivamente con la satisfacción.
+
+En los Países Bajos, la edad, el empleo y estar casado fueron factores que favorecieron una mayor satisfacción entre sus habitantes.
+
+Para finalizar, en Estados Unidos, ser mujer, tener una edad avanzada, estar empleados, practicar una religión, estar casados y tener educación secundaria o universitaria fueron aspectos que influenciaron positivamente en los niveles de satisfacción de la población.
+
+Por ende, en la mayoría de los países, a pesar de que la inmigración afectase negativamente la satisfacción, tener una edad más avanzada, mantener creencias religiosas y estar casado, contribuyeron positivamente sobre la satisfacción. Estos factores suelen estar asociados con una mayor estabilidad emocional, redes de apoyo social más sólidas y un sentido de propósito y pertenencia, lo que incrementa los niveles de satisfacción.
+
+En lo que respecta al sector laboral, en Egipto y Brasil, a diferencia de los demás países, el trabajo afectó negativamente a la satisfacción debido a las peores condiciones laborales. Esto incluye factores como salarios bajos, largas horas de trabajo, falta de seguridad laboral y condiciones laborales adversas, que impactan negativamente en la satisfacción general de los trabajadores en estos países.
+
+De este modo, los coeficientes de determinación (R²) mostraron variabilidad significativa, oscilando desde 0.0179 en Brasil hasta 0.09098 en los Países Bajos. Esto indicó que las variables consideradas en los modelos explicaron entre aproximadamente el 1.79% y el 9.10% de la variabilidad en la satisfacción en cada país, respectivamente. Se encontró una relación estadísticamente significativa entre estas variables y la satisfacción, aunque estos hallazgos sugieren que otros factores no incluidos en el análisis podrían haber influido de manera notable en esta medida en diferentes contextos nacionales.
+
+
+#### Coeficientes Sanidad
+```{r, warning=FALSE}
+stargazer(mod_SN,
+           type = "text",
+           keep.stat = c("n", "rsq", "adj.rsq"),
+           column.labels = c("AUL", "BRA", "CAN", "CHN", "EGY", "NTH", "USA"),
+           title = "Coeficientes de Sanidad",
+           digits = 2)
+
+#Crear un data frame con los resultados
+info_Sanidad <- data.frame(
+  País = c("AUL", "BRA", "CAN", "CHN", "EGY", "NTH", "USA"),
+  t(sapply(list(ASN, BSN, CSN, CHSN, ESN, NSN, USN), extract_info)))
+kable(t(info_Sanidad)[-1, ], col.names = info_df$País, digits = 2, caption = "Resumen modelos Sanidad")
+```
+Para la última variable del bloque correspondiente a preguntas de felicidad y bienestar, se detectaron las siguientes características en relación con la sanidad:
+
+En el caso de Australia, tener más hijos y estar separado impactaron negativamente la sanidad. En contraste, la edad avanzada, el empleo y el matrimonio influyeron positivamente.
+
+En Brasil, un mayor número de hijos y la inmigración afectaron adversamente la salud. Sin embargo, la edad avanzada y la educación universitaria favorecieron el bienestar sanitario.
+
+En cuanto a Canadá, la inmigración, las creencias religiosas y el estado de separación tuvieron efectos negativos sobre la sanidad. Por otro lado, ser mujer, tener mayor edad, estar empleado y poseer estudios avanzados (secundaria, secundaria postobligatoria o universidad) contribuyeron positivamente.
+
+En China, la edad avanzada disminuía los niveles de sanidad, mientras que poseer un título universitario los incrementaba.
+
+En cambio, en Egipto, la separación afectó de manera adversa la salud, mientras que los estudios secundarios postobligatorios y universitarios tuvieron un impacto positivo.
+
+En los Países Bajos, ser inmigrante y tener creencias religiosas perjudicaron la sanidad, mientras que la edad avanzada y el empleo mejoraron los niveles de bienestar sanitario.
+
+Finalmente, en Estados Unidos, tener hijos redujo los niveles de sanidad, pero la edad avanzada, las creencias religiosas y el matrimonio los incrementaron.
+
+En general, tener hijos disminuía los niveles de sanidad. Esto puede deberse a que la crianza implica mayores responsabilidades, estrés adicional y menos tiempo para el cuidado personal, lo cual puede afectar negativamente la salud.
+
+Por otro lado, los estudios superiores (secundaria, secundaria postobligatoria y universidad) influyeron positivamente. Esto se debe a que una mayor educación está generalmente asociada con un mejor acceso a la información sobre salud, mejores empleos y recursos económicos, y un mayor conocimiento sobre prácticas saludables.
+
+En cuanto a la edad, en la mayoría de los países, a medida que las personas envejecen, experimentan mejores niveles de sanidad. Esto se debe a que los individuos mayores suelen tener más acceso a servicios de salud y beneficios sociales. Sin embargo, en China y Egipto, esta tendencia no se observa debido a la alta densidad poblacional en China, lo que limita los servicios disponibles por persona, y a la falta de recursos suficientes en Egipto para atender adecuadamente a una población en envejecimiento.
+
+En el estudio de sanidad, se encontró que los coeficientes de determinación (R²) mostraron que las variables consideradas en los modelos explicaron entre aproximadamente el 1.14% (en China) y el 6.51% (en Australia) de la variabilidad en la situación sanitaria de cada país. Aunque se identificaron relaciones estadísticamente significativas entre estas variables y la sanidad, estos resultados sugieren que otros factores no incluidos en el análisis podrían haber tenido un impacto considerable en la situación sanitaria de los países estudiados. Este hallazgo destaca la complejidad y la necesidad de considerar múltiples variables para comprender completamente las diferencias en la sanidad entre diferentes contextos nacionales.
+
+
+- Variables correspondientes a preguntas de ciencia y tecnología
+
+#### Coeficientes Comodidad
+```{r, warning=FALSE}
+stargazer(mod_C,
+           type = "text",
+           keep.stat = c("n", "rsq", "adj.rsq"),
+           column.labels = c("AUL", "BRA", "CAN", "CHN", "EGY", "NTH", "USA"),
+           title = "Coeficientes de Comodidad",
+           digits = 2)
+
+#Crear un data frame con los resultados
+info_Comodidad <- data.frame(
+  País = c("AUL", "BRA", "CAN", "CHN", "EGY", "NTH", "USA"),
+  t(sapply(list(AC, BC, CC, CHC, EC, NC, UC), extract_info)))
+kable(t(info_Comodidad)[-1, ], col.names = info_df$País, digits = 2, caption = "Resumen modelos Comodidad")
+```
+En segundo lugar, se estudiaron las variables del bloque de ciencia y tecnología.
+
+
+Para la variable comodidad se observaron diversas relaciones respecto a los diferentes países estudiados:
+
+En Australia, ser mujer se asoció con una menor comodidad hacia la ciencia y la tecnología en comparación con los hombres. Sin embargo, tanto la edad avanzada como tener educación universitaria contribuyeron positivamente a esta comodidad.
+
+En el caso de Brasil, no se detectó ninguna variable significativa que afectara la comodidad hacia la ciencia y la tecnología.
+
+En Canadá, ser mujer y tener creencias religiosas tuvieron un impacto negativo en esta comodidad. Por el contrario, al igual que en Australia, tener mayor edad y educación universitaria tuvieron un efecto positivo. Además, estar casado también favoreció positivamente la comodidad.
+
+En China, la religión afectó negativamente la comodidad hacia la ciencia y la tecnología, mientras que la edad y la educación universitaria tuvieron un impacto positivo, similar a lo observado en Australia y Canadá.
+
+En Egipto, tener un mayor número de hijos y poseer estudios avanzados (secundaria, secundaria postobligatoria y universitarios) contribuyeron positivamente a la comodidad hacia la ciencia y la tecnología.
+
+En los Países Bajos, ser mujer, estar empleado, tener creencias religiosas y estar separado no favorecieron la comodidad hacia la ciencia y la tecnología, a diferencia de lo observado con los estudios universitarios.
+
+Por último, en Estados Unidos, ser mujer, tener hijos y estar trabajando impactaron negativamente en la comodidad. En cambio, tener estudios avanzados (secundaria, secundaria postobligatoria y universidad) contribuyó positivamente.
+
+En resumen, en todos los países, ser mujer se asoció con una menor comodidad hacia la ciencia y la tecnología, fenómeno que puede explicarse por diversos factores culturales y sociales que han influido históricamente en las oportunidades y la percepción de las mujeres en campos STEM (ciencia, tecnología, ingeniería y matemáticas).
+
+En contraste con los otros países, en China el trabajo contribuyó positivamente a la comodidad hacia la ciencia y la tecnología. Esto podría deberse a políticas educativas y laborales que enfatizaban la importancia de la formación en STEM para el desarrollo económico del país, lo cual elevaba la percepción positiva hacia estos campos entre quienes se encontraban empleados.
+
+Por otro lado, en cuanto a los estudios secundarios, secundarios postobligatorios y universitarios, estos tuvieron un efecto positivo en la comodidad en la mayoría de los países debido a la mayor preparación y exposición a conocimientos científicos y tecnológicos que proporcionan. Sin embargo, en Brasil este patrón se observó de manera opuesta. Esto podría explicarse debido a diferencias en los sistemas educativos, percepciones sociales sobre la utilidad de la educación en ciencia y tecnología, y posibles barreras estructurales que limitaban el acceso o la valoración de estas disciplinas en comparación con otros países estudiados.
+
+Por ende, en el estudio sobre la comodidad en varios países mediante modelos de regresión, se observó que los coeficientes de determinación (R²) mostraron que las variables incluidas en los modelos explicaron una cantidad relativamente baja de la variabilidad en la percepción de la comodidad, con valores que fluctuaron entre aproximadamente el 0.62%  (en Brasil) y el 7.43% (en Países Bajos) en los distintos países analizados. A pesar de encontrarse relaciones estadísticamente significativas entre estas variables y la comodidad, estos resultados sugieren que otros factores no contemplados en el análisis podrían haber ejercido una influencia significativa en la percepción de la comodidad en los contextos nacionales estudiados.
+
+
+#### Coeficientes Oportunidades
+```{r, warning=FALSE}
+stargazer(mod_O,
+           type = "text",
+           keep.stat = c("n", "rsq", "adj.rsq"),
+           column.labels = c("AUL", "BRA", "CAN", "CHN", "EGY", "NTH", "USA"),
+           title = "Coeficientes de Oportunidades",
+           digits = 2)
+
+#Crear un data frame con los resultados
+info_Oportunidades <- data.frame(
+  País = c("AUL", "BRA", "CAN", "CHN", "EGY", "NTH", "USA"),
+  t(sapply(list(AO, BO, CO, CHO, EO, NO, UO), extract_info)))
+kable(t(info_Oportunidades)[-1, ], col.names = info_df$País, digits = 2, caption = "Resumen modelos Oportunidades")
+```
+Siguiendo con los coeficientes de la variable oportunidades:
+
+En Australia, no se observó ninguna significancia que indicara una relación con la variable.
+
+En cambio, en Brasil, estar trabajando favoreció al crecimiento de las oportunidades en ciencia y tecnología. Esto podría deberse a que el empleo proporciona acceso a redes profesionales y recursos que facilitan la participación en estos campos.
+
+En Canadá, ser mujer y tener creencias religiosas afectaron negativamente las oportunidades, mientras que tener estudios avanzados (secundaria, secundaria postobligatoria y universidad) las aumentó.
+
+En China, tanto la edad como el trabajo incrementaron las oportunidades en ciencia y tecnología. Esto podría explicarse debido a que en este país el envejecimiento y la experiencia laboral eran valorados en la industria, lo que pudo llevar a mayores oportunidades en estos campos.
+
+En Egipto, el crecimiento de las oportunidades se derivó de ser mujer y de tener estudios avanzados (secundaria, secundaria postobligatoria y universidad).
+
+Por el contrario, en los Países Bajos, ser mujer y tener hijos redujeron las oportunidades en ciencia y tecnología. Sin embargo, la edad y los estudios universitarios las aumentaron.
+
+Finalmente, en Estados Unidos, las oportunidades se vieron significativamente afectadas negativamente solo por el trabajo. Esto podría deberse a que los trabajos no ofrecieran suficientes oportunidades de crecimiento profesional en ciencia y tecnología, o a la alta competitividad en estos campos, lo que dificultaba el acceso a oportunidades significativas.
+
+En general, las oportunidades se encontraron vinculadas con los estudios. Tener educación secundaria incrementaba las oportunidades; asimismo, los estudios secundarios postobligatorios y universitarios también tuvieron un efecto positivo, excepto en Brasil. En este país, los estudios avanzados pudieron no traducirse directamente en mayores oportunidades debido a posibles barreras estructurales, como la falta de integración entre el sistema educativo y el mercado laboral, o la baja valoración de la educación en ciencia y tecnología dentro de la economía brasileña.
+
+
+
+#### Coeficientes Progreso
+```{r, warning=FALSE}
+stargazer(mod_P,
+           type = "text",
+           keep.stat = c("n", "rsq", "adj.rsq"),
+           column.labels = c("AUL", "BRA", "CAN", "CHN", "EGY", "NTH", "USA"),
+           title = "Coeficientes de Progreso",
+           digits = 2)
+
+#Crear un data frame con los resultados
+info_Progreso <- data.frame(
+  País = c("AUL", "BRA", "CAN", "CHN", "EGY", "NTH", "USA"),
+  t(sapply(list(AP, BP, CP, CHP, EP, NP, UP), extract_info)))
+kable(t(info_Progreso)[-1, ], col.names = info_df$País, digits = 2, caption = "Resumen modelos Progreso")
+```
+
+Para la última variable del bloque de preguntas de ciencia y tecnología, se determinaron las siguientes características en relación con el progreso:
+
+En el caso Australia, ser mujer e inmigrante reducía significativamente el progreso en ciencia y tecnología, mientras que contar con estudios universitarios lo aumentaba. Esta situación puedo deberse a las barreras sociales y económicas que enfrentaban las mujeres y los inmigrantes, las cuales fueron superadas en parte por una educación superior que facilitaba el acceso a mejores oportunidades y recursos.
+
+En Brasil, además de los estudios universitarios, los estudios de secundaria postobligatoria también influyeron positivamente en el crecimiento del progreso, a pesar de que las creencias religiosas lo redujeran.
+
+En cuanto a Canadá, ser mujer, inmigrante, estar trabajando y tener creencias religiosas disminuían el progreso en ciencia y tecnología. En cambio, la edad y los estudios universitarios lo aumentaban. La disminución podría estar relacionada con la discriminación y las responsabilidades adicionales que enfrentan las mujeres y los inmigrantes, mientras que la edad y la educación superior aportaron experiencia y conocimientos que favorecieron el avance tecnológico.
+
+En China, la religión tuvo una influencia negativa significativa sobre el progreso, mientras que la edad y los estudios universitarios lo aumentaron impulsando la innovación y el desarrollo.
+
+En Egipto, el progreso se vio influido significativamente únicamente por los estudios. Tener estudios de secundaria, secundaria postobligatoria o universitarios aumentaba el progreso en ciencia y tecnología. Esto sugiere que la educación era un factor crucial en el desarrollo científico y tecnológico en Egipto, probablemente debido a la falta de otras estructuras de apoyo y recursos.
+
+En los Países Bajos, ser mujer y tener creencias religiosas disminuían el progreso. En cambio, la edad y los estudios universitarios fueron influyentes para aumentarlo.
+
+Para acabar, en Estados Unidos, ser mujer, tener creencias religiosas y un elevado número de hijos disminuían el progreso. En cambio, la edad y los estudios universitarios influían positivamente. Las responsabilidades familiares y las limitaciones religiosas posiblemente pudieron restringir el tiempo y la energía disponible para la investigación científica y tecnológica, mientras que la experiencia y la educación avanzada proporcionaban los recursos necesarios para este.
+
+En conjunto, se observó una influencia negativa de ser mujer y tener creencias religiosas en el progreso de la ciencia y la tecnología. Esto podría deberse a las barreras sociales y culturales que enfrentan las mujeres y a las limitaciones ideológicas impuestas por algunas creencias religiosas. El sector laboral también tuvo un gran peso negativo sobre el progreso, excepto en China, donde las estructuras laborales y políticas difirieron significativamente el resultado. Por otro lado, la edad y los estudios secundarios postobligatorios y universitarios afectaron de manera positiva, posiblemente porque aportaban la experiencia y los conocimientos necesarios para fomentar la innovación y el desarrollo en estos campos.
+
+Finalmente, en el análisis del progreso en varios países mediante modelos de regresión, los coeficientes de determinación (R²) proporcionaron una medida de cuánta variabilidad en el progreso pudo ser explicada por las variables incluidas en cada modelo. El R² mínimo se observó en Brasil con un valor de aproximadamente 0.0257, lo que indica que solo el 2.57% de la variabilidad en el progreso pudo ser explicada por las variables consideradas en el estudio. Por otro lado, el R² máximo se encontró en Estados Unidos, con un valor de aproximadamente 0.1191, sugiriendo que el 11.91% de la variabilidad en el progreso fue explicado por las variables analizadas. Estos hallazgos indican que, aunque las variables estudiadas mostraron asociaciones estadísticamente significativas con el progreso, una parte considerable de la variabilidad aún podría ser atribuida a factores no considerados en el análisis, subrayando la complejidad del fenómeno estudiado y la necesidad de considerar múltiples factores en la evaluación del progreso nacional.
