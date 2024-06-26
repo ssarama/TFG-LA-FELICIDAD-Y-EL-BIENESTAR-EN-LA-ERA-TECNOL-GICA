@@ -2776,7 +2776,7 @@ Función para extraer observaciones, R² y R² ajustado
 #Extraer n, R² y R² ajustado
 extract_info <- function(model) {
   n <- length(model$fitted.values)
-  r2 <- summary(model)$r.squared
+  r2 <- round(summary(model)$r.squared, 3)
   return(c(Observaciones = n, R2 = r2))
 }
 ```
@@ -2799,7 +2799,7 @@ stargazer(mod_F,
 info_Felicidad <- data.frame(
   País = c("AUL", "BRA", "CAN", "CHN", "EGY", "NTH", "USA"),
   t(sapply(list(AF, BF, CF, CHF, EF, NF, UF), extract_info)))
-kable(t(info_Felicidad)[-1, ], col.names = info_df$País, digits = 2, caption = "Resumen modelos Felicidad")
+kable(t(info_Felicidad)[-1, ], col.names = info_Felicidad$País, caption = "Resumen modelos Felicidad")
 ```
 En primer lugar, se estudiaron las variables del bloque de felicidad y bienestar.
 
@@ -2838,7 +2838,7 @@ stargazer(mod_S,
 info_Satisfacción <- data.frame(
   País = c("AUL", "BRA", "CAN", "CHN", "EGY", "NTH", "USA"),
   t(sapply(list(AS, BS, CS, CHS, ES, NS, US), extract_info)))
-kable(t(info_Satisfacción)[-1, ], col.names = info_df$País, digits = 2, caption = "Resumen modelos Satisfacción")
+kable(t(info_Satisfacción)[-1, ], col.names = info_Satisfacción$País, caption = "Resumen modelos Satisfacción")
 ```
 En cuanto a la variable de satisfacción:
 
@@ -2876,7 +2876,7 @@ stargazer(mod_SN,
 info_Sanidad <- data.frame(
   País = c("AUL", "BRA", "CAN", "CHN", "EGY", "NTH", "USA"),
   t(sapply(list(ASN, BSN, CSN, CHSN, ESN, NSN, USN), extract_info)))
-kable(t(info_Sanidad)[-1, ], col.names = info_df$País, digits = 2, caption = "Resumen modelos Sanidad")
+kable(t(info_Sanidad)[-1, ], col.names = info_Sanidad$País, caption = "Resumen modelos Sanidad")
 ```
 Para la última variable del bloque correspondiente a preguntas de felicidad y bienestar, se detectaron las siguientes características en relación con la sanidad:
 
@@ -2918,7 +2918,7 @@ stargazer(mod_C,
 info_Comodidad <- data.frame(
   País = c("AUL", "BRA", "CAN", "CHN", "EGY", "NTH", "USA"),
   t(sapply(list(AC, BC, CC, CHC, EC, NC, UC), extract_info)))
-kable(t(info_Comodidad)[-1, ], col.names = info_df$País, digits = 2, caption = "Resumen modelos Comodidad")
+kable(t(info_Comodidad)[-1, ], col.names = info_Comodidad$País, caption = "Resumen modelos Comodidad")
 ```
 En segundo lugar, se estudiaron las variables del bloque de ciencia y tecnología.
 
@@ -2961,7 +2961,7 @@ stargazer(mod_O,
 info_Oportunidades <- data.frame(
   País = c("AUL", "BRA", "CAN", "CHN", "EGY", "NTH", "USA"),
   t(sapply(list(AO, BO, CO, CHO, EO, NO, UO), extract_info)))
-kable(t(info_Oportunidades)[-1, ], col.names = info_df$País, digits = 2, caption = "Resumen modelos Oportunidades")
+kable(t(info_Oportunidades)[-1, ], col.names = info_Oportunidades$País, caption = "Resumen modelos Oportunidades")
 ```
 Siguiendo con los coeficientes de la variable oportunidades:
 
@@ -2996,7 +2996,7 @@ stargazer(mod_P,
 info_Progreso <- data.frame(
   País = c("AUL", "BRA", "CAN", "CHN", "EGY", "NTH", "USA"),
   t(sapply(list(AP, BP, CP, CHP, EP, NP, UP), extract_info)))
-kable(t(info_Progreso)[-1, ], col.names = info_df$País, digits = 2, caption = "Resumen modelos Progreso")
+kable(t(info_Progreso)[-1, ], col.names = info_Progreso$País, caption = "Resumen modelos Progreso")
 ```
 
 Para la última variable del bloque de preguntas de ciencia y tecnología, se determinaron las siguientes características en relación con el progreso:
